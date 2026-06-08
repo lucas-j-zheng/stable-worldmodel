@@ -1,0 +1,10 @@
+dataset:
+  num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+  frameskip: 5
+  name: pusht_expert_train_latent.lance
+  keys_to_load:
+    - latent
+    - action
+  keys_to_cache:
+    - latent
+    - action

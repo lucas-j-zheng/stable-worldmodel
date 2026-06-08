@@ -1,0 +1,56 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+world:
+  env_name: swm/PushT-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval_wm to 2 * eval_budget
+
+dataset:
+  stats: ${eval.dataset_name}
+  keys_to_cache:
+    - action
+    - proprio
+    - state
+
+seed: 42
+policy: ??? # diffusion checkpoint, e.g. latent_diffusion/weights_epoch_100.pt
+
+# D-MPC planner: search action sequences, roll them through the diffusion
+# dynamics model (K samples averaged inside get_cost), score by goal-latent
+# distance. history_len=3 / horizon=8 match the trained denoiser layout.
+plan_config:
+  horizon: 8
+  receding_horizon: 5
+  history_len: 3
+  action_block: 5 # frameskip
+
+# Sample N=64 action sequences per CEM iteration (D-MPC value). The "simpler
+# alternative" to a learned proposal: vanilla CEM (swap to solver=icem for
+# colored-noise smoothing if needed).
+solver:
+  num_samples: 64
+
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  img_size: 224
+  dataset_name: pusht_expert_train.h5
+  callables:
+    - method: _set_state
+      args:
+        state:
+          value: state
+    - method: _set_goal_state
+      args:
+        goal_state:
+          value: goal_state
+
+compile: false
+bf16: false
+
+output:
+  filename: pusht_diffusion_results.txt

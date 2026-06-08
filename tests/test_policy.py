@@ -340,6 +340,7 @@ class MockSolver:
         self._config = None
         self.call_count = 0
         self.last_batch_size = None
+        self.last_info_dict = None
 
     def configure(self, *, action_space, n_envs, config):
         self.configured = True
@@ -366,6 +367,7 @@ class MockSolver:
         )
         self.call_count += 1
         self.last_batch_size = batch
+        self.last_info_dict = info_dict
         return {
             'actions': torch.zeros(batch, self._config.horizon, action_dim)
         }
@@ -472,6 +474,118 @@ def test_worldmodel_policy_get_action_uses_buffer():
     # Second call should use buffer (no new planning)
     policy.get_action(info)
     assert len(policy._action_buffer[0]) == 0
+
+
+def test_worldmodel_policy_passes_real_observation_history():
+    """Replans receive history_len frames spaced by action_block."""
+    solver = MockSolver()
+    config = PlanConfig(
+        horizon=4, receding_horizon=1, history_len=3, action_block=2
+    )
+    policy = WorldModelPolicy(solver=solver, config=config)
+
+    mock_env = MagicMock()
+    mock_env.num_envs = 1
+    mock_env.action_space = gym_spaces.Box(low=-1, high=1, shape=(2,))
+    mock_env.single_action_space = mock_env.action_space
+    policy.set_env(mock_env)
+
+    goal = np.full((1, 1, 1), 99.0, dtype=np.float32)
+    for step in range(5):
+        info = {
+            'state': np.array([[[float(step)]]], dtype=np.float32),
+            'goal_state': goal,
+        }
+        policy.get_action(info)
+
+    state_history = solver.last_info_dict['state']
+    goal_state = solver.last_info_dict['goal_state']
+
+    assert state_history.shape == (1, 3, 1)
+    torch.testing.assert_close(
+        state_history[0, :, 0], torch.tensor([0.0, 2.0, 4.0])
+    )
+    assert goal_state.shape == (1, 1, 1)
+
+
+def _action_block_policy(history_len=3, action_block=2):
+    solver = MockSolver()
+    config = PlanConfig(
+        horizon=4,
+        receding_horizon=1,
+        history_len=history_len,
+        action_block=action_block,
+    )
+    policy = WorldModelPolicy(solver=solver, config=config)
+    mock_env = MagicMock()
+    mock_env.num_envs = 1
+    mock_env.action_space = gym_spaces.Box(low=-10, high=10, shape=(2,))
+    mock_env.single_action_space = mock_env.action_space
+    policy.set_env(mock_env)
+    return policy
+
+
+def test_worldmodel_policy_packs_action_history_into_dense_blocks():
+    """Action history is densified to (history_len, action_block * action_dim),
+    mirroring the training layout (data.buffer) rather than being strided like
+    an observation (which would drop action_block-1 of every action_block)."""
+    policy = _action_block_policy(history_len=3, action_block=2)
+    # window = history_len * action_block raw actions retained.
+    assert policy.info_history_window_len == 6
+
+    # Raw single actions a_s = [s, s] in chronological order.
+    for s in range(6):
+        policy._info_history[0]['action'].append(
+            torch.tensor([float(s), float(s)])
+        )
+
+    blocks = policy._stack_history_for_env(0, 'action', None)
+
+    assert blocks.shape == (3, 4)  # (history_len, action_block * action_dim)
+    torch.testing.assert_close(
+        blocks,
+        torch.tensor(
+            [[0.0, 0.0, 1.0, 1.0], [2.0, 2.0, 3.0, 3.0], [4.0, 4.0, 5.0, 5.0]]
+        ),
+    )
+
+
+def test_worldmodel_policy_action_blocks_left_pad_zeros_at_episode_start():
+    """Short history left-pads with zeros; the most recent action stays last."""
+    policy = _action_block_policy(history_len=3, action_block=2)
+
+    # Only 2 raw actions so far (numpy path), need 6 -> left-pad 4 zeros.
+    for s in (1, 2):
+        policy._info_history[0]['action'].append(
+            np.array([float(s), float(s)], dtype=np.float32)
+        )
+
+    blocks = policy._stack_history_for_env(0, 'action', None)
+
+    assert blocks.shape == (3, 4)
+    np.testing.assert_array_equal(
+        blocks,
+        np.array(
+            [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 2.0, 2.0]],
+            dtype=np.float32,
+        ),
+    )
+
+
+def test_worldmodel_policy_action_block_one_keeps_single_actions():
+    """With action_block=1 each block is one raw action (no-op vs old behavior)."""
+    policy = _action_block_policy(history_len=3, action_block=1)
+    for s in range(3):
+        policy._info_history[0]['action'].append(
+            torch.tensor([float(s), float(s)])
+        )
+
+    blocks = policy._stack_history_for_env(0, 'action', None)
+
+    assert blocks.shape == (3, 2)
+    torch.testing.assert_close(
+        blocks, torch.tensor([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]])
+    )
 
 
 def test_worldmodel_policy_get_action_with_process():

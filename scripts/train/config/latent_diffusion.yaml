@@ -1,0 +1,72 @@
+defaults:
+  - _self_
+  - launcher: local
+  # Cached-latent dataset from scripts/data/cache_latents.py. Override with
+  # `data=pusht` to train directly from pixels (re-encodes every step).
+  - data: pusht_latent
+
+output_model_name: latent_diffusion
+subdir: ${hydra:job.id}
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+img_size: 224
+embed_dim: 192
+checkpoint_interval: 5
+
+trainer:
+  max_epochs: 100
+  devices: auto
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+loader:
+  batch_size: 128
+  num_workers: ${num_workers}
+  drop_last: True
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+  shuffle: True
+
+optimizer:
+  type: AdamW
+  lr: 1e-4
+  weight_decay: 1e-3
+
+wm:
+  history_size: 3
+  horizon: 8
+  # The shared data configs compute num_steps from wm.num_preds.
+  num_preds: ${wm.horizon}
+
+model:
+  _target_: stable_worldmodel.wm.latent_diffusion.LatentDiffusionDynamics
+  lewm_checkpoint: ???
+  freeze_lewm: true
+  history_size: ${wm.history_size}
+  horizon: ${wm.horizon}
+  num_diffusion_steps: 100
+  # DDIM sampling over a cosine schedule; eta=0 is deterministic. SIGReg makes
+  # the latent marginal ~N(0, I), matching the cosine terminal distribution.
+  schedule: cosine
+  num_inference_steps: 10
+  eta: 0.0
+  # Dynamics samples averaged per candidate at planning time (D-MPC).
+  k_samples: 4
+  beta_start: 1e-4
+  beta_end: 2e-2
+  denoiser:
+    _target_: stable_worldmodel.wm.latent_diffusion.module.LatentTrajectoryDenoiser
+    latent_dim: ${embed_dim}
+    action_dim: ${embed_dim}
+    hidden_dim: ${embed_dim}
+    max_seq_len: ${eval:'${wm.history_size} + ${wm.horizon}'}
+    depth: 6
+    heads: 8
+    mlp_dim: 1024
+    dim_head: 64
+    dropout: 0.1
+    emb_dropout: 0.0

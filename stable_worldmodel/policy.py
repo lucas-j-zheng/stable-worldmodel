@@ -1,4 +1,4 @@
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -321,11 +321,24 @@ class WorldModelPolicy(BasePolicy):
         self.transform = transform or {}
         self._action_buffer: list[deque[torch.Tensor]] | None = None
         self._next_init: torch.Tensor | None = None
+        self._info_history: list[dict[str, deque]] | None = None
 
     @property
     def flatten_receding_horizon(self) -> int:
         """Receding horizon in environment steps (with frameskip)."""
         return self.cfg.receding_horizon * self.cfg.action_block
+
+    @property
+    def info_history_window_len(self) -> int:
+        """Raw env frames retained for policy history.
+
+        Observation keys are strided by ``action_block`` (needs
+        ``(history_len - 1) * action_block + 1`` frames); the ``action`` key is
+        kept dense and packed into ``history_len`` blocks of ``action_block``
+        raw actions (needs ``history_len * action_block`` frames). The latter is
+        the larger requirement, so size the window to it.
+        """
+        return max(1, self.cfg.history_len * self.cfg.action_block)
 
     def set_env(self, env: Any) -> None:
         """Configure the policy and solver for the given environment.
@@ -341,10 +354,128 @@ class WorldModelPolicy(BasePolicy):
         self._action_buffer = [
             deque(maxlen=self.flatten_receding_horizon) for _ in range(n_envs)
         ]
+        self._info_history = [
+            defaultdict(lambda: deque(maxlen=self.info_history_window_len))
+            for _ in range(n_envs)
+        ]
 
         assert isinstance(self.solver, Solver), (
             'Solver must implement the Solver protocol'
         )
+
+    @staticmethod
+    def _is_history_key(key: str, value: Any) -> bool:
+        """Whether ``value`` should be stacked over policy history."""
+        if key.startswith('_') or key.startswith('goal'):
+            return False
+        if not (torch.is_tensor(value) or isinstance(value, np.ndarray)):
+            return False
+        return value.ndim >= 3 and value.shape[1] > 0
+
+    @staticmethod
+    def _copy_frame(value: torch.Tensor | np.ndarray):
+        if torch.is_tensor(value):
+            return value.detach().clone()
+        return value.copy()
+
+    @staticmethod
+    def _slice_value(value: Any, indices: list[int] | torch.Tensor):
+        if torch.is_tensor(value):
+            return value[indices]
+        if isinstance(value, np.ndarray):
+            return value[indices]
+        if isinstance(value, list):
+            return [value[int(i)] for i in indices]
+        return value
+
+    def _append_info_history(
+        self, info_dict: dict, dead: np.ndarray
+    ) -> None:
+        if self._info_history is None:
+            return
+
+        for key, value in info_dict.items():
+            if not self._is_history_key(key, value):
+                continue
+            for env_i in range(len(self._info_history)):
+                if dead[env_i]:
+                    continue
+                frame = value[env_i, -1]
+                self._info_history[env_i][key].append(
+                    self._copy_frame(frame)
+                )
+
+    def _stack_history_for_env(self, env_i: int, key: str, current):
+        assert self._info_history is not None
+        frames = list(self._info_history[env_i].get(key, ()))
+        if not frames:
+            frames = [self._copy_frame(current[env_i, -1])]
+
+        if key == 'action':
+            return self._stack_action_blocks(frames)
+
+        stride = max(1, self.cfg.action_block)
+        selected = []
+        for i in range(self.cfg.history_len):
+            offset = (self.cfg.history_len - 1 - i) * stride
+            idx = len(frames) - 1 - offset
+            selected.append(frames[max(0, idx)])
+
+        if torch.is_tensor(selected[0]):
+            return torch.stack(selected, dim=0)
+        return np.stack(selected, axis=0)
+
+    def _stack_action_blocks(self, frames: list):
+        """Pack raw actions into ``(history_len, action_block * action_dim)``.
+
+        Mirrors the training layout: ``data.buffer`` keeps the ``action`` column
+        dense and reshapes it to ``(history_len, frameskip * action_dim)``, so
+        each token conditions the denoiser on the full block of raw actions that
+        drives one latent transition. Subsampling actions like an observation
+        (the strided path above) would instead drop ``action_block - 1`` of
+        every ``action_block`` raw actions, leaving the wrong last dim and
+        falling back to zeros downstream. Left-pads with zeros at episode start
+        when fewer than ``history_len * action_block`` raw actions exist.
+        """
+        block = max(1, self.cfg.action_block)
+        need = self.cfg.history_len * block
+        recent = frames[-need:]
+        if len(recent) < need:
+            zero = (
+                torch.zeros_like(recent[0])
+                if torch.is_tensor(recent[0])
+                else np.zeros_like(recent[0])
+            )
+            recent = [zero] * (need - len(recent)) + recent
+
+        if torch.is_tensor(recent[0]):
+            stacked = torch.stack(recent, dim=0)
+        else:
+            stacked = np.stack(recent, axis=0)
+        return stacked.reshape(self.cfg.history_len, -1)
+
+    def _make_solver_info(
+        self, info_dict: dict, env_indices: list[int]
+    ) -> dict:
+        solver_info = {}
+        idx_tensor = torch.as_tensor(env_indices, dtype=torch.long)
+
+        for key, value in info_dict.items():
+            if self._is_history_key(key, value):
+                stacked = [
+                    self._stack_history_for_env(env_i, key, value)
+                    for env_i in env_indices
+                ]
+                if torch.is_tensor(stacked[0]):
+                    solver_info[key] = torch.stack(stacked, dim=0)
+                else:
+                    solver_info[key] = np.stack(stacked, axis=0)
+                continue
+
+            indices = idx_tensor if torch.is_tensor(value) else env_indices
+            solver_info[key] = self._slice_value(value, indices)
+
+        return solver_info
 
     def get_action(self, info_dict: dict, **kwargs: Any) -> np.ndarray:
         """Get action via planning with the world model.
@@ -366,6 +497,8 @@ class WorldModelPolicy(BasePolicy):
             for i in range(n_envs):
                 if needs_flush[i]:
                     self._action_buffer[i].clear()
+                    if self._info_history is not None:
+                        self._info_history[i].clear()
                     if self._next_init is not None:
                         self._next_init[i] = 0
 
@@ -375,6 +508,7 @@ class WorldModelPolicy(BasePolicy):
             if terminated is not None
             else np.zeros(n_envs, dtype=bool)
         )
+        self._append_info_history(info_dict, dead)
 
         replan_idx = [
             i
@@ -384,16 +518,7 @@ class WorldModelPolicy(BasePolicy):
 
         if replan_idx:
             idx_tensor = torch.as_tensor(replan_idx, dtype=torch.long)
-            sliced = {}
-            for k, v in info_dict.items():
-                if torch.is_tensor(v):
-                    sliced[k] = v[idx_tensor]
-                elif isinstance(v, np.ndarray):
-                    sliced[k] = v[replan_idx]
-                elif isinstance(v, list):
-                    sliced[k] = [v[i] for i in replan_idx]
-                else:
-                    sliced[k] = v
+            sliced = self._make_solver_info(info_dict, replan_idx)
 
             sliced_init = (
                 self._next_init[idx_tensor]

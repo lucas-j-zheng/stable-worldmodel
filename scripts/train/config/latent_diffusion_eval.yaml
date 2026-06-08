@@ -1,0 +1,31 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: pusht
+
+seed: 3072
+train_split: 0.9
+img_size: 224
+device: cuda
+
+diffusion_checkpoint: ???
+lewm_checkpoint: null
+output_path: null
+
+num_batches: null
+num_diffusion_samples: 8
+
+wm:
+  history_size: 3
+  horizon: 8
+  # The shared data configs compute num_steps from wm.num_preds.
+  num_preds: ${wm.horizon}
+
+loader:
+  batch_size: 64
+  num_workers: 6
+  drop_last: False
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+  shuffle: False

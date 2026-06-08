@@ -333,3 +333,31 @@ def test_convert_lance_to_folder_and_back(tmp_path):
     )
     ds = LanceDataset(path=back)
     assert ds.lengths.tolist() == [3, 4]
+
+
+def test_optional_column_probing_for_latent_cache(tmp_path):
+    """scripts/data/cache_latents probes columns before requesting them.
+
+    ``keys_to_load`` is validated eagerly, so requesting an absent optional
+    column raises before any skip logic. The fix probes the present columns
+    (no key filter loads names, not data), intersects, then loads survivors.
+    """
+    out = tmp_path / 'demo.lance'
+    # Has pixels, action, proprio; missing reward, terminated, state.
+    _write_demo(out)
+
+    keys_to_copy = ['action', 'reward', 'terminated', 'proprio', 'state']
+
+    # Eager validation: asking for an absent column up front raises.
+    with pytest.raises(KeyError):
+        LanceDataset(path=out, keys_to_load=['pixels', *keys_to_copy])
+
+    # Probe present columns, then load only the survivors (the cache fix).
+    present = set(LanceDataset(path=out).column_names)
+    copy_cols = [c for c in keys_to_copy if c in present]
+    missing = [c for c in keys_to_copy if c not in present]
+    assert copy_cols == ['action', 'proprio']
+    assert set(missing) == {'reward', 'terminated', 'state'}
+
+    ds = LanceDataset(path=out, keys_to_load=['pixels', *copy_cols])
+    assert sorted(ds.column_names) == ['action', 'pixels', 'proprio']

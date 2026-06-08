@@ -1,0 +1,27 @@
+defaults:
+  - _self_
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+# Frozen LeWM/SIGReg encoder checkpoint (required).
+lewm_checkpoint: ???
+
+# Source dataset to encode and the derived latent dataset to write.
+source: pusht_expert_train.lance
+out_name: pusht_expert_train_latent.lance
+
+# Columns copied through alongside the new `latent` column (absent ones skipped).
+keys_to_copy:
+  - action
+  - reward
+  - terminated
+  - proprio
+  - state
+
+img_size: 224
+device: cuda
+batch_size: 256
+log_every: 50
