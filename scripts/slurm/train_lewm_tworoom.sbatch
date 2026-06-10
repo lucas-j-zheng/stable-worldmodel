@@ -29,7 +29,8 @@ python scripts/train/lewm.py \
   data=tworoom \
   data.dataset.name="$TWOROOM_DATA" \
   output_model_name=lewm_tworoom \
-  trainer.max_epochs=100 \
+  trainer.max_epochs=300 \
+  warmup_pct=0.05 \
   trainer.accelerator=gpu \
   trainer.devices=1 \
   loader.batch_size=128 \

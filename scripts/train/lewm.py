@@ -154,7 +154,7 @@ def run(cfg):
             'optimizer': dict(cfg.optimizer),
             'scheduler': {
                 'type': 'LinearWarmupCosineAnnealingLR',
-                'warmup_steps': max(1, int(0.01 * total_steps)),
+                'warmup_steps': max(1, int(cfg.warmup_pct * total_steps)),
                 'max_steps': total_steps,
             },
             'interval': 'epoch',

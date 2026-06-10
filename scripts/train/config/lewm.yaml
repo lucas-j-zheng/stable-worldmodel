@@ -16,6 +16,7 @@ embed_dim: 192
 encoder_resnet9: False
 train_value_function: False
 projector_loss_weight: 1e-3
+warmup_pct: 0.01
 dump_object: True
 
 trainer:
