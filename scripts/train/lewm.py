@@ -50,7 +50,7 @@ class SaveCkptCallback(Callback):
         save_pretrained(
             model,
             run_name=self.run_name,
-            config=self.cfg,
+            config=self.cfg.model,
             filename=f'weights_epoch_{epoch}.pt',
         )
 

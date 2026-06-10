@@ -30,6 +30,8 @@ nav:
       - envs/ale.md
   - Guides:
       - guides/checkpoints.md
+      - guides/latent_dmpc_training.md
+      - guides/latent_dmpc_oscar_smoke.md
       - guides/online_learning.md
   - cli.md
   # - Tutorial:
