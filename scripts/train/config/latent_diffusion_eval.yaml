@@ -8,6 +8,11 @@ train_split: 0.9
 img_size: 224
 device: cuda
 
+# Unused by this script, but launcher/local.yaml interpolates them into
+# wandb.config, which OmegaConf.to_container(resolve=True) touches at dump.
+output_model_name: latent_diffusion_eval
+subdir: eval
+
 diffusion_checkpoint: ???
 lewm_checkpoint: null
 output_path: null
