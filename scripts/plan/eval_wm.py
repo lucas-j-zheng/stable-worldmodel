@@ -30,9 +30,9 @@ def img_transform(cfg, dtype=torch.float32):
 
 
 def get_episodes_length(dataset, episodes):
-    col_name = (
-        'episode_idx' if 'episode_idx' in dataset.column_names else 'ep_idx'
-    )
+    # Lance datasets expose episode_idx/step_idx but omit them from
+    # column_names; h5 datasets that use ep_idx do list it.
+    col_name = 'ep_idx' if 'ep_idx' in dataset.column_names else 'episode_idx'
 
     episode_idx = dataset.get_col_data(col_name)
     step_idx = dataset.get_col_data('step_idx')
@@ -72,9 +72,9 @@ def run(cfg: DictConfig):
 
     dataset = get_dataset(cfg, cfg.eval.dataset_name)
     stats_dataset = dataset  # get_dataset(cfg, cfg.dataset.stats)
-    col_name = (
-        'episode_idx' if 'episode_idx' in dataset.column_names else 'ep_idx'
-    )
+    # Lance datasets expose episode_idx/step_idx but omit them from
+    # column_names; h5 datasets that use ep_idx do list it.
+    col_name = 'ep_idx' if 'ep_idx' in dataset.column_names else 'episode_idx'
     ep_indices, _ = np.unique(
         stats_dataset.get_col_data(col_name), return_index=True
     )
@@ -137,9 +137,9 @@ def run(cfg: DictConfig):
         ep_id: max_start_idx[i] for i, ep_id in enumerate(ep_indices)
     }
     # Map each dataset row’s episode_idx to its max_start_idx
-    col_name = (
-        'episode_idx' if 'episode_idx' in dataset.column_names else 'ep_idx'
-    )
+    # Lance datasets expose episode_idx/step_idx but omit them from
+    # column_names; h5 datasets that use ep_idx do list it.
+    col_name = 'ep_idx' if 'ep_idx' in dataset.column_names else 'episode_idx'
     max_start_per_row = np.array(
         [max_start_idx_dict[ep_id] for ep_id in dataset.get_col_data(col_name)]
     )

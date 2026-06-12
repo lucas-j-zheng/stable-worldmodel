@@ -36,6 +36,7 @@ class LatentDiffusionDynamics(nn.Module):
         num_inference_steps: int = 10,
         eta: float = 0.0,
         k_samples: int = 1,
+        clip_sample: float | None = 6.0,
     ):
         super().__init__()
 
@@ -74,6 +75,12 @@ class LatentDiffusionDynamics(nn.Module):
         # Number of independent dynamics samples averaged per candidate when
         # scoring action plans (D-MPC: average before ranking).
         self.k_samples = int(k_samples)
+        # Static x0 thresholding (Nichol & Dhariwal). The cosine terminal
+        # alpha_bar is ~1e-5, so predict_start divides by ~3e-3 at the first
+        # DDIM step and amplifies eps error ~300x; without a clamp the error
+        # compounds by sqrt(alpha_0/alpha_T) across the chain. SIGReg latents
+        # are ~N(0, I) (|z| < ~5), so +/-6 is a safe envelope.
+        self.clip_sample = float(clip_sample) if clip_sample else None
 
         # Fail fast at construction if the denoiser cannot fit the trained
         # trajectory layout, rather than truncating the sequence at runtime.
@@ -415,6 +422,10 @@ class LatentDiffusionDynamics(nn.Module):
             )
             pred_noise = self.denoiser(x, history, action_emb, t)
             pred_start = self.predict_start_from_noise(x, t, pred_noise)
+            if self.clip_sample is not None:
+                pred_start = pred_start.clamp(
+                    -self.clip_sample, self.clip_sample
+                )
 
             if i == len(timesteps) - 1:
                 x = pred_start
