@@ -159,8 +159,11 @@ def run(cfg: DictConfig):
 
     print(random_episode_indices)
 
-    eval_episodes = dataset.get_row_data(random_episode_indices)[col_name]
-    eval_start_idx = dataset.get_row_data(random_episode_indices)['step_idx']
+    # get_col_data loads index columns even when they are not in the dataset's
+    # loaded keys (get_row_data only returns loaded keys, and lance hides
+    # episode_idx/step_idx from those). Index the full columns by row instead.
+    eval_episodes = dataset.get_col_data(col_name)[random_episode_indices]
+    eval_start_idx = dataset.get_col_data('step_idx')[random_episode_indices]
 
     if len(eval_episodes) < cfg.eval.num_eval:
         raise ValueError(

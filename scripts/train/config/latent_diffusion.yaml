@@ -54,6 +54,11 @@ model:
   schedule: cosine
   num_inference_steps: 10
   eta: 0.0
+  # Denoiser output parametrization: 'eps', 'x0', or 'v'. 'v'/'x0' are far more
+  # stable than 'eps' on the cosine schedule (no division by sqrt(alpha_bar)).
+  prediction_type: v
+  # Static x0 thresholding envelope for SIGReg latents (~N(0, I)).
+  clip_sample: 6.0
   # Dynamics samples averaged per candidate at planning time (D-MPC).
   k_samples: 4
   beta_start: 1e-4

@@ -37,6 +37,7 @@ class LatentDiffusionDynamics(nn.Module):
         eta: float = 0.0,
         k_samples: int = 1,
         clip_sample: float | None = 6.0,
+        prediction_type: str = 'eps',
     ):
         super().__init__()
 
@@ -76,11 +77,24 @@ class LatentDiffusionDynamics(nn.Module):
         # scoring action plans (D-MPC: average before ranking).
         self.k_samples = int(k_samples)
         # Static x0 thresholding (Nichol & Dhariwal). The cosine terminal
-        # alpha_bar is ~1e-5, so predict_start divides by ~3e-3 at the first
-        # DDIM step and amplifies eps error ~300x; without a clamp the error
+        # alpha_bar is ~2e-7, so predict_start divides by ~5e-4 at the first
+        # DDIM step and amplifies eps error ~2000x; without a clamp the error
         # compounds by sqrt(alpha_0/alpha_T) across the chain. SIGReg latents
         # are ~N(0, I) (|z| < ~5), so +/-6 is a safe envelope.
         self.clip_sample = float(clip_sample) if clip_sample else None
+
+        # Denoiser output parametrization. 'eps' (predict the noise) is the
+        # DDPM default but is numerically unstable on the cosine schedule: the
+        # eps->x0 conversion divides by sqrt(alpha_bar) ~ 5e-4 at high t, so a
+        # small eps error explodes into the x0 estimate that seeds DDIM. 'x0'
+        # (predict the clean latent) and 'v' (Salimans & Ho 2022 velocity) avoid
+        # that division and are far more robust as alpha_bar -> 0.
+        if prediction_type not in ('eps', 'x0', 'v'):
+            raise ValueError(
+                f"prediction_type must be 'eps', 'x0', or 'v'; got "
+                f"'{prediction_type}'."
+            )
+        self.prediction_type = prediction_type
 
         # Fail fast at construction if the denoiser cannot fit the trained
         # trajectory layout, rather than truncating the sequence at runtime.
@@ -272,6 +286,66 @@ class LatentDiffusionDynamics(nn.Module):
             1e-6
         )
 
+    def target_from_noise_and_start(
+        self,
+        x_start: torch.Tensor,
+        noise: torch.Tensor,
+        timesteps: torch.Tensor,
+    ) -> torch.Tensor:
+        """Regression target the denoiser is trained against.
+
+        Depends on ``prediction_type``: the noise itself ('eps'), the clean
+        latent ('x0'), or the velocity v = sqrt(abar)*eps - sqrt(1-abar)*x0
+        ('v', Salimans & Ho 2022).
+        """
+        if self.prediction_type == 'eps':
+            return noise
+        if self.prediction_type == 'x0':
+            return x_start
+        sqrt_alpha = self._extract(self.sqrt_alphas_cumprod, timesteps, x_start)
+        sqrt_one_minus_alpha = self._extract(
+            self.sqrt_one_minus_alphas_cumprod, timesteps, x_start
+        )
+        return sqrt_alpha * noise - sqrt_one_minus_alpha * x_start
+
+    def model_predictions(
+        self,
+        x_t: torch.Tensor,
+        timesteps: torch.Tensor,
+        model_out: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Map a raw denoiser output to ``(pred_start, pred_noise)``.
+
+        Inverts ``prediction_type`` so the DDIM update (which needs both x0 and
+        eps) is parametrization-agnostic. When ``clip_sample`` is set, x0 is
+        thresholded and eps is recomputed from the clamped x0 so the two stay
+        mutually consistent for the DDIM direction term.
+        """
+        sqrt_alpha = self._extract(self.sqrt_alphas_cumprod, timesteps, x_t)
+        sqrt_one_minus_alpha = self._extract(
+            self.sqrt_one_minus_alphas_cumprod, timesteps, x_t
+        )
+        if self.prediction_type == 'eps':
+            pred_noise = model_out
+            pred_start = (
+                x_t - sqrt_one_minus_alpha * pred_noise
+            ) / sqrt_alpha.clamp_min(1e-6)
+        elif self.prediction_type == 'x0':
+            pred_start = model_out
+            pred_noise = (
+                x_t - sqrt_alpha * pred_start
+            ) / sqrt_one_minus_alpha.clamp_min(1e-6)
+        else:  # 'v'
+            pred_start = sqrt_alpha * x_t - sqrt_one_minus_alpha * model_out
+            pred_noise = sqrt_one_minus_alpha * x_t + sqrt_alpha * model_out
+
+        if self.clip_sample is not None:
+            pred_start = pred_start.clamp(-self.clip_sample, self.clip_sample)
+            pred_noise = (
+                x_t - sqrt_alpha * pred_start
+            ) / sqrt_one_minus_alpha.clamp_min(1e-6)
+        return pred_start, pred_noise
+
     @torch.no_grad()
     def encode_latents(self, info: dict) -> torch.Tensor:
         # Fast path: a precomputed ``latent`` column (e.g. from the offline
@@ -367,16 +441,19 @@ class LatentDiffusionDynamics(nn.Module):
         )
         noise = torch.randn_like(target)
         noisy_future = self.q_sample(target, timesteps, noise)
-        pred_noise = self.denoiser(
+        model_out = self.denoiser(
             noisy_future, history, action_emb, timesteps
         )
 
-        loss = F.mse_loss(pred_noise.float(), noise.float())
+        regression_target = self.target_from_noise_and_start(
+            target, noise, timesteps
+        )
+        loss = F.mse_loss(model_out.float(), regression_target.float())
         return {
             'emb': emb,
             'history_emb': history,
             'target_emb': target,
-            'pred_noise': pred_noise,
+            'pred_noise': model_out,
             'noise': noise,
             'diffusion_loss': loss,
         }
@@ -420,12 +497,8 @@ class LatentDiffusionDynamics(nn.Module):
             t = torch.full(
                 (history.shape[0],), int(step.item()), device=history.device
             )
-            pred_noise = self.denoiser(x, history, action_emb, t)
-            pred_start = self.predict_start_from_noise(x, t, pred_noise)
-            if self.clip_sample is not None:
-                pred_start = pred_start.clamp(
-                    -self.clip_sample, self.clip_sample
-                )
+            model_out = self.denoiser(x, history, action_emb, t)
+            pred_start, pred_noise = self.model_predictions(x, t, model_out)
 
             if i == len(timesteps) - 1:
                 x = pred_start
