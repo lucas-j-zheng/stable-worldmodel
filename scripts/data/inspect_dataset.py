@@ -21,18 +21,22 @@ def main():
     ]
 
     ds = swm.data.load_dataset(name, num_steps=4, frameskip=5)
-    print('INSPECT columns:', ds.column_names)
+    cols = list(ds.column_names)
+    print('INSPECT columns:', cols)
     print('INSPECT len:', len(ds))
-    missing = []
-    for c in required:
-        try:
-            d = ds.get_col_data(c)
-            print(f'INSPECT col {c}: shape={getattr(d, "shape", "?")} '
-                  f'dtype={getattr(d, "dtype", "?")}')
-        except Exception as e:  # noqa: BLE001
-            print(f'INSPECT col {c}: MISSING ({type(e).__name__})')
-            missing.append(c)
+    # Presence check only — do NOT get_col_data (would load full columns,
+    # e.g. all pixels = many GB). Shapes for small index/state cols come from
+    # a single-row read.
+    missing = [c for c in required if c not in cols]
     print('INSPECT missing:', missing if missing else 'none')
+    try:
+        row = ds.get_row_data([0])
+        for c in required:
+            if c in row:
+                v = row[c]
+                print(f'INSPECT row0 {c}: shape={getattr(v, "shape", "?")}')
+    except Exception as e:  # noqa: BLE001
+        print(f'INSPECT row0 read skipped ({type(e).__name__})')
 
 
 if __name__ == '__main__':
