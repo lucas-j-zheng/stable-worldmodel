@@ -50,7 +50,9 @@ from pathlib import Path
 import numpy as np
 from sklearn.neighbors import BallTree
 
-import stable_worldmodel as swm
+# stable_worldmodel is imported lazily inside the dataset path so --self-test
+# (pure synthetic numpy) runs anywhere, including the macOS venv where the swm
+# import chain can break on optional deps.
 
 
 def build_pairs(ds, max_frames, mode, rng, chunk=8):
@@ -223,10 +225,38 @@ def analyze(cond, target, n_anchors, k, rng):
     }
 
 
+def synthetic_control(rng, n=8000, cond_dim=4, tgt_dim=16, noise=0.15, sep=3.0):
+    """Positive/negative controls with KNOWN structure, to validate the metric.
+
+    All three share a deterministic linear trend target = cond @ W (+ structure):
+      unimodal : + Gaussian noise          -> expect residual_bimodal ~ 0
+      bimodal  : + Bernoulli(+/-sep) branch -> expect residual_bimodal HIGH
+      trimodal : + 3-way {-sep,0,+sep} mix  -> expect residual_bimodal HIGH-ish
+    If the detrended metric flags the bi/tri cases but not the unimodal one, the
+    ~0 readings on TwoRoom/PushT are trustworthy (data really is unimodal), not an
+    artifact of an over-aggressive detrend.
+    """
+    cond = rng.standard_normal((n, cond_dim)).astype(np.float32)
+    W = rng.standard_normal((cond_dim, tgt_dim)).astype(np.float32)
+    trend = cond @ W
+    dirn = rng.standard_normal(tgt_dim).astype(np.float32)
+    dirn /= np.linalg.norm(dirn)
+    out = {}
+    base = trend + noise * rng.standard_normal((n, tgt_dim)).astype(np.float32)
+    out['unimodal'] = base
+    b = rng.integers(0, 2, n) * 2 - 1                      # +/-1
+    out['bimodal'] = base + sep * b[:, None] * dirn[None, :]
+    t = rng.integers(0, 3, n) - 1                          # {-1,0,1}
+    out['trimodal'] = base + sep * t[:, None] * dirn[None, :]
+    return cond, out
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--dataset', required=True, help='latent .lance name under datasets/')
-    ap.add_argument('--tag', required=True, help='label for the output')
+    ap.add_argument('--dataset', default=None, help='latent .lance name under datasets/')
+    ap.add_argument('--self-test', action='store_true',
+                    help='run synthetic positive/negative controls (no dataset)')
+    ap.add_argument('--tag', default='mm', help='label for the output')
     ap.add_argument('--mode', choices=['dynamics', 'policy', 'policy_chunk'],
                     default='dynamics')
     ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
@@ -240,6 +270,20 @@ def main():
     args = ap.parse_args()
 
     rng = np.random.default_rng(args.seed)
+
+    if args.self_test:
+        cond, variants = synthetic_control(rng)
+        print('[mm] SELF-TEST (expect: unimodal residual_bimodal~0, bi/tri HIGH)')
+        for name, tgt in variants.items():
+            s = analyze(cond, tgt, args.n_anchors, args.k, rng)
+            print(f'  {name:9s}: det_R2={s["det_r2_mean"]:.3f}  '
+                  f'residual_bimodal_frac={s["residual_bimodality_fraction"]:.3f}  '
+                  f'residual_bc_median={s["residual_bimodality_coeff_median"]:.3f}')
+        return
+
+    if not args.dataset:
+        raise SystemExit('provide --dataset or --self-test')
+    import stable_worldmodel as swm
     ds = swm.data.load_dataset(args.dataset)
     cond, target = build_pairs(ds, args.max_frames, args.mode, rng, chunk=args.chunk)
 
