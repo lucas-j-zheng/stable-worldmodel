@@ -22,24 +22,18 @@ export LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-$STABLEWM_HOME}
 mkdir -p logs
 
 # Pure numpy/sklearn (no GPU use) -- on gpu-debug only to dodge the CPU-QOS wall.
-# TwoRoom = the near-deterministic negative reference; PushT = the multimodal
-# candidate E6 is testing. Same metric on both makes E6 interpretable.
-echo "[multimodal] TwoRoom (e300 latents) ..."
-python scripts/data/multimodality_diagnostic.py \
-  --dataset tworoom_latent_e300.lance --tag tworoom \
-  --cond-cols state action
+# Full 2x2: dynamics-multimodality (what a diffusion *dynamics* model exploits)
+# vs policy-multimodality (what a diffusion *policy/proposal* exploits), on the
+# near-deterministic reference (TwoRoom) and the E6 candidate (PushT). The
+# detrended residual_bimodality_fraction is the comparable signal.
+DOMAINS=("tworoom:tworoom_latent_e300.lance" "pusht:pusht_latent.lance")
+for entry in "${DOMAINS[@]}"; do
+  dom="${entry%%:*}"; ds="${entry##*:}"
+  for mode in dynamics policy; do
+    echo "[multimodal] ${dom} / ${mode} ..."
+    python scripts/data/multimodality_diagnostic.py \
+      --dataset "$ds" --tag "${dom}_${mode}" --mode "$mode"
+  done
+done
 
-echo "[multimodal] PushT (pretrained-encoder latents, full) ..."
-python scripts/data/multimodality_diagnostic.py \
-  --dataset pusht_latent.lance --tag pusht \
-  --cond-cols state action
-
-# Density-matched control: same metric on PushT subsampled to ~TwoRoom size.
-# If the *detrended* residual metric barely moves between this and full PushT,
-# the dataset-size confound that poisoned the raw ratio is genuinely removed.
-echo "[multimodal] PushT (density-matched to TwoRoom, ~5.4k transitions) ..."
-python scripts/data/multimodality_diagnostic.py \
-  --dataset pusht_latent.lance --tag pusht_matched \
-  --cond-cols state action --max-frames 5400
-
-echo "[multimodal] done. JSONs in logs/multimodality_{tworoom,pusht,pusht_matched}.json"
+echo "[multimodal] done. JSONs: logs/multimodality_{tworoom,pusht}_{dynamics,policy}.json"

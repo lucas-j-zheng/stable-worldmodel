@@ -1,36 +1,46 @@
-"""Measure how multimodal a domain's next-latent dynamics are.
+"""Measure where a domain's multimodality lives: dynamics vs policy.
 
-The latent D-MPC premise is that a *diffusion* dynamics model beats a
-deterministic predictor when the true next-state distribution is multimodal
-given (state, action) -- because a deterministic predictor is forced to blur
-across modes while a sampler can commit to one. TwoRoom said no (deterministic
-won), with the hypothesis that TwoRoom dynamics are near-deterministic, the
-worst case for a sampler. Before reading anything into the PushT (E6) result we
-need to *measure* whether PushT actually exercises the diffusion advantage --
-i.e. is P(z_{t+1} | state_t, action_t) meaningfully multimodal?
+Latent D-MPC puts a *diffusion* dynamics model in place of a deterministic
+predictor. That only pays off if the thing being modeled is multimodal -- a
+deterministic predictor must blur across modes, a sampler can commit to one.
+Two distinct distributions could be multimodal, and they motivate diffusion in
+*different* parts of the system:
 
-Method (k-NN in conditioning space, encoder-agnostic question of the dynamics):
-  1. Build transitions (cond_t = [state_t, action_t], z_{t+1}) within episodes.
-  2. Standardize cond features; build a BallTree on a reference subsample.
-  3. For random anchors, gather the k nearest neighbors in cond space -- these
-     are transitions from near-identical (state, action), so their spread of
-     z_{t+1} is an empirical sample of the conditional next-latent distribution.
-  4. Report:
-       - ratio = conditional_std / marginal_std. ~0 => deterministic dynamics;
-         ->1 => conditioning tells you nothing (max stochastic).
-       - bimodality_fraction = fraction of neighborhoods whose top-PC next-latent
-         distribution has Sarle's bimodality coefficient > 5/9 (the uniform
-         threshold) -- i.e. genuinely split into modes, not just noisy.
-       - neighbor cond-radius (sanity: neighbors must actually be close, else
-         high spread is just sparse conditioning, not multimodality).
+  --mode dynamics : P(z_{t+1} | state_t, action_t).  Multimodality here is what a
+                    diffusion *dynamics* model exploits. But given the action,
+                    forward dynamics in a deterministic-physics domain are nearly
+                    deterministic -- so we expect this to be LOW.
+  --mode policy   : P(action_t | state_t).  Multimodality here (many valid actions
+                    from one state -- the classic Diffusion Policy / PushT win) is
+                    what a diffusion *policy / action-proposal* exploits. A
+                    diffusion dynamics model never sees it (it conditions on the
+                    action). We expect this to be HIGH on PushT.
 
-Conditioning is on the *physical* state+action (not the latent history the model
-sees) on purpose: this asks whether the *domain's dynamics* are multimodal,
-independent of encoder quality -- exactly the "pick domains" question.
+Running both on the same latents tells you whether the generative model is on the
+right side of the problem. TwoRoom (2026-06-14) and PushT (E6) both lost
+closed-loop to the deterministic predictor; if dynamics-multimodality is ~0 while
+policy-multimodality is high, that's the mechanism -- and it says move diffusion
+to the proposal, not the dynamics.
+
+Method (k-NN in conditioning space, then DETREND):
+  1. Build (cond_t, target_t) pairs within episodes per the mode.
+  2. Standardize cond; for random anchors gather k nearest neighbors in cond space
+     (near-identical conditioning) -- their target spread samples P(target | cond).
+  3. Detrend: fit a local-linear map target ~ W.(cond - cond_anchor) and take the
+     RESIDUAL. This removes deterministic local sensitivity (which scales with
+     neighborhood width, hence dataset sparsity) and isolates true conditional
+     stochasticity. A linear fit cannot remove multimodality (it passes between
+     branches), so residual bimodality genuinely detects split modes.
+  4. Report det_R2 (variance a deterministic local map explains -- high => a
+     deterministic model suffices), residual_ratio (leftover stochastic spread),
+     and residual_bimodality_fraction (of that leftover, the multimodal share --
+     the diffusion edge).
 
 Usage (run via SLURM, not the login node -- this loads a real dataset):
     python scripts/data/multimodality_diagnostic.py \
-        --dataset pusht_latent.lance --tag pusht
+        --dataset pusht_latent.lance --tag pusht_dyn   --mode dynamics
+    python scripts/data/multimodality_diagnostic.py \
+        --dataset pusht_latent.lance --tag pusht_policy --mode policy
 """
 
 import argparse
@@ -43,68 +53,134 @@ from sklearn.neighbors import BallTree
 import stable_worldmodel as swm
 
 
-def build_transitions(ds, max_frames, cond_cols, rng):
-    """Collect within-episode (cond_t, z_{t+1}) pairs up to ~max_frames."""
-    present = set(ds.column_names)
-    use_cols = [c for c in cond_cols if c in present]
-    if 'action' not in use_cols:
-        raise SystemExit(f'no usable conditioning cols; have {sorted(present)}')
-    print(f'[mm] conditioning on {use_cols} (of requested {cond_cols})')
+def build_pairs(ds, max_frames, mode, rng):
+    """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
-    n_eps = len(ds.lengths)
-    ep_order = rng.permutation(n_eps)
-    conds, znext = [], []
+    dynamics: cond = [state, action]_t, target = latent_{t+1}.
+    policy:   cond = [state]_t,         target = action_t.
+    """
+    present = set(ds.column_names)
+    if mode == 'dynamics':
+        cond_cols = [c for c in ('state', 'action') if c in present]
+        if 'action' not in cond_cols:
+            raise SystemExit(f'dynamics needs action; have {sorted(present)}')
+        target_col, shift = 'latent', True
+    elif mode == 'policy':
+        cond_cols = [c for c in ('state',) if c in present]
+        if not cond_cols or 'action' not in present:
+            raise SystemExit(f'policy needs state+action; have {sorted(present)}')
+        target_col, shift = 'action', False
+    else:
+        raise SystemExit(f'unknown mode {mode}')
+    print(f'[mm] mode={mode} cond={cond_cols} target={target_col} shift={shift}')
+
+    ep_order = rng.permutation(len(ds.lengths))
+    conds, targs = [], []
     n = 0
     for ep in ep_order:
         ep = int(ep)
-        if ds.lengths[ep] < 2:
+        T = int(ds.lengths[ep])
+        if T < 2:
             continue
         data = ds.load_episode(ep)
-        z = np.asarray(data['latent'], dtype=np.float32)  # (T, D)
-        # cond at step t = concat of the requested per-step features at t
-        parts = [np.asarray(data[c], dtype=np.float32).reshape(ds.lengths[ep], -1)
-                 for c in use_cols]
+        parts = [np.asarray(data[c], dtype=np.float32).reshape(T, -1) for c in cond_cols]
         cond = np.concatenate(parts, axis=1)              # (T, C)
-        T = z.shape[0]
-        conds.append(cond[:T - 1])                        # cond_t,  t = 0..T-2
-        znext.append(z[1:T])                              # z_{t+1}
-        n += T - 1
+        tgt = np.asarray(data[target_col], dtype=np.float32).reshape(T, -1)
+        if shift:                                         # target = value at t+1
+            conds.append(cond[:T - 1])
+            targs.append(tgt[1:T])
+            n += T - 1
+        else:                                             # target = value at t
+            conds.append(cond)
+            targs.append(tgt)
+            n += T
         if n >= max_frames:
             break
-    conds = np.concatenate(conds, axis=0)
-    znext = np.concatenate(znext, axis=0)
-    print(f'[mm] {conds.shape[0]} transitions, cond_dim={conds.shape[1]}, '
-          f'latent_dim={znext.shape[1]} (from {len(conds)} steps)')
-    return conds, znext
+    cond = np.concatenate(conds, axis=0)
+    tgt = np.concatenate(targs, axis=0)
+    print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]}, '
+          f'target_dim={tgt.shape[1]}')
+    return cond, tgt
 
 
 def bimodality_coefficient(x):
-    """Sarle's bimodality coefficient: (skew^2 + 1) / kurtosis (Fisher, +3/...).
-
-    BC > 5/9 (~0.555, the uniform value) suggests bimodality / split modes.
-    """
+    """Sarle's bimodality coefficient. BC > 5/9 (~0.555, uniform) suggests split
+    modes; a Gaussian gives ~1/3."""
     x = x - x.mean()
     s = x.std()
     if s < 1e-12 or x.size < 8:
         return 0.0
     z = x / s
     n = x.size
-    m3 = np.mean(z ** 3)
-    m4 = np.mean(z ** 4)
-    # sample-size corrected (DeCarlo); g1 skew, g2 excess kurtosis
-    g1 = m3
-    g2 = m4 - 3.0
+    g1 = np.mean(z ** 3)
+    g2 = np.mean(z ** 4) - 3.0
     denom = g2 + 3.0 * ((n - 1) ** 2) / ((n - 2) * (n - 3))
     if abs(denom) < 1e-12:
         return 0.0
     return (g1 ** 2 + 1.0) / denom
 
 
+def top_pc_projection(mat):
+    """Project rows of a centered matrix onto their dominant direction."""
+    c = mat - mat.mean(0)
+    try:
+        _, _, vt = np.linalg.svd(c, full_matrices=False)
+        return c @ vt[0]
+    except np.linalg.LinAlgError:
+        return c[:, 0]
+
+
+def analyze(cond, target, n_anchors, k, rng):
+    """k-NN-in-cond + local-linear detrend stats for P(target | cond)."""
+    cmu, csd = cond.mean(0), cond.std(0) + 1e-8
+    condn = (cond - cmu) / csd
+    marginal_std = float(np.sqrt(target.var(0).mean()))
+
+    tree = BallTree(condn)
+    anchors = rng.choice(condn.shape[0], size=min(n_anchors, condn.shape[0]),
+                         replace=False)
+    k = min(k, condn.shape[0])
+    dist, nbr = tree.query(condn[anchors], k=k)
+
+    cond_stds, bc_vals, res_stds, res_bc_vals, det_r2 = [], [], [], [], []
+    for a, row in zip(anchors, nbr):
+        tloc = target[row]                                # (k, D)
+        cond_stds.append(np.sqrt(tloc.var(0).mean()))
+        bc_vals.append(bimodality_coefficient(top_pc_projection(tloc)))
+
+        dc = condn[row] - condn[a]
+        dc = np.concatenate([dc, np.ones((dc.shape[0], 1))], axis=1)
+        W, *_ = np.linalg.lstsq(dc, tloc, rcond=None)
+        resid = tloc - dc @ W
+        res_stds.append(np.sqrt(resid.var(0).mean()))
+        tot = tloc.var(0).mean()
+        det_r2.append(1.0 - resid.var(0).mean() / tot if tot > 0 else 0.0)
+        res_bc_vals.append(bimodality_coefficient(top_pc_projection(resid)))
+
+    cond_std = float(np.mean(cond_stds))
+    res_std = float(np.mean(res_stds))
+    bc_vals, res_bc_vals = np.asarray(bc_vals), np.asarray(res_bc_vals)
+    return {
+        'marginal_std': round(marginal_std, 5),
+        'conditional_std': round(cond_std, 5),
+        'ratio_cond_over_marginal': round(cond_std / marginal_std if marginal_std else 0, 4),
+        'bimodality_fraction': round(float((bc_vals > 5 / 9).mean()), 4),
+        'bimodality_coeff_median': round(float(np.median(bc_vals)), 4),
+        'det_r2_mean': round(float(np.mean(det_r2)), 4),
+        'residual_std': round(res_std, 5),
+        'residual_ratio': round(res_std / marginal_std if marginal_std else 0, 4),
+        'residual_bimodality_fraction': round(float((res_bc_vals > 5 / 9).mean()), 4),
+        'residual_bimodality_coeff_median': round(float(np.median(res_bc_vals)), 4),
+        'neighbor_radius_median': round(float(np.median(dist[:, -1])), 4),
+        'cond_scale_median': round(float(np.median(np.linalg.norm(condn, axis=1))), 4),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dataset', required=True, help='latent .lance name under datasets/')
-    ap.add_argument('--tag', required=True, help='domain label for the output')
-    ap.add_argument('--cond-cols', nargs='+', default=['state', 'action'])
+    ap.add_argument('--tag', required=True, help='label for the output')
+    ap.add_argument('--mode', choices=['dynamics', 'policy'], default='dynamics')
     ap.add_argument('--max-frames', type=int, default=200_000)
     ap.add_argument('--n-anchors', type=int, default=4000)
     ap.add_argument('--k', type=int, default=64, help='neighbors per anchor')
@@ -114,105 +190,18 @@ def main():
 
     rng = np.random.default_rng(args.seed)
     ds = swm.data.load_dataset(args.dataset)
-    cond, znext = build_transitions(ds, args.max_frames, args.cond_cols, rng)
+    cond, target = build_pairs(ds, args.max_frames, args.mode, rng)
 
-    # Standardize conditioning so all features weigh equally in the metric.
-    cmu, csd = cond.mean(0), cond.std(0) + 1e-8
-    condn = (cond - cmu) / csd
-
-    # Marginal next-latent spread: mean per-dim std (RMS scale of z').
-    marginal_std = float(np.sqrt((znext.var(0)).mean()))
-
-    tree = BallTree(condn)
-    anchor_idx = rng.choice(condn.shape[0], size=min(args.n_anchors, condn.shape[0]),
-                            replace=False)
-    k = min(args.k, condn.shape[0])
-    dist, nbr = tree.query(condn[anchor_idx], k=k)        # (A, k)
-
-    cond_scale = float(np.median(np.linalg.norm(condn, axis=1)))  # typical |cond|
-    nbr_radius = float(np.median(dist[:, -1]))            # median farthest-neighbor
-
-    # Per neighborhood compute TWO families of stats:
-    #   raw      = total within-neighborhood spread of z'  (confounded by how
-    #              wide the (s,a) neighborhood is -- deterministic sensitivity
-    #              leaks in, and that scales with dataset sparsity/dim).
-    #   residual = spread AFTER removing a local-linear deterministic map
-    #              z' ~ W . (cond - cond_anchor). This subtracts the
-    #              deterministic component, isolating genuine conditional
-    #              stochasticity -- the only thing a diffusion model can exploit.
-    # The residual's bimodality says whether that stochasticity is *multimodal*
-    # (diffusion wins) or just unimodal Gaussian noise (diffusion gains nothing).
-    cond_stds, bc_vals = [], []
-    res_stds, res_bc_vals, det_r2 = [], [], []
-    for a, row in zip(anchor_idx, nbr):
-        zloc = znext[row]                                 # (k, D)
-        cond_stds.append(np.sqrt(zloc.var(0).mean()))
-        zc = zloc - zloc.mean(0)
-        try:
-            _, _, vt = np.linalg.svd(zc, full_matrices=False)
-            proj = zc @ vt[0]
-        except np.linalg.LinAlgError:
-            proj = zc[:, 0]
-        bc_vals.append(bimodality_coefficient(proj))
-
-        # Local-linear detrend: regress centered z' on centered cond.
-        dc = condn[row] - condn[a]                        # (k, C)
-        dc = np.concatenate([dc, np.ones((dc.shape[0], 1))], axis=1)  # + bias
-        W, *_ = np.linalg.lstsq(dc, zloc, rcond=None)     # (C+1, D)
-        resid = zloc - dc @ W                             # (k, D)
-        res_stds.append(np.sqrt(resid.var(0).mean()))
-        tot_var = zloc.var(0).mean()
-        det_r2.append(1.0 - resid.var(0).mean() / tot_var if tot_var > 0 else 0.0)
-        rc = resid - resid.mean(0)
-        try:
-            _, _, rvt = np.linalg.svd(rc, full_matrices=False)
-            rproj = rc @ rvt[0]
-        except np.linalg.LinAlgError:
-            rproj = rc[:, 0]
-        res_bc_vals.append(bimodality_coefficient(rproj))
-
-    cond_std = float(np.mean(cond_stds))
-    ratio = cond_std / marginal_std if marginal_std > 0 else 0.0
-    bc_vals = np.asarray(bc_vals)
-    bimodal_frac = float((bc_vals > 5.0 / 9.0).mean())
-
-    res_std = float(np.mean(res_stds))
-    res_ratio = res_std / marginal_std if marginal_std > 0 else 0.0
-    res_bc_vals = np.asarray(res_bc_vals)
-    res_bimodal_frac = float((res_bc_vals > 5.0 / 9.0).mean())
-    det_r2_mean = float(np.mean(det_r2))
-
-    result = {
-        'tag': args.tag,
-        'dataset': args.dataset,
-        'n_transitions': int(cond.shape[0]),
-        'cond_dim': int(cond.shape[1]),
-        'latent_dim': int(znext.shape[1]),
-        'n_anchors': int(len(anchor_idx)),
-        'k': int(k),
-        'marginal_std': round(marginal_std, 5),
-        # raw (confounded by neighborhood width -- kept for continuity)
-        'conditional_std': round(cond_std, 5),
-        'ratio_cond_over_marginal': round(ratio, 4),
-        'bimodality_fraction': round(bimodal_frac, 4),
-        'bimodality_coeff_median': round(float(np.median(bc_vals)), 4),
-        # detrended (the real signal): residual after a local-linear (s,a) map
-        'det_r2_mean': round(det_r2_mean, 4),
-        'residual_std': round(res_std, 5),
-        'residual_ratio': round(res_ratio, 4),
-        'residual_bimodality_fraction': round(res_bimodal_frac, 4),
-        'residual_bimodality_coeff_median': round(float(np.median(res_bc_vals)), 4),
-        # sanity
-        'neighbor_radius_median': round(nbr_radius, 4),
-        'cond_scale_median': round(cond_scale, 4),
-    }
+    stats = analyze(cond, target, args.n_anchors, args.k, rng)
+    result = {'tag': args.tag, 'dataset': args.dataset, 'mode': args.mode,
+              'n_pairs': int(cond.shape[0]), 'cond_dim': int(cond.shape[1]),
+              'target_dim': int(target.shape[1]), 'k': min(args.k, cond.shape[0]),
+              **stats}
     print('[mm] RESULT', json.dumps(result, indent=2))
-    print(f'[mm] interpretation: det_R2={result["det_r2_mean"]} '
-          f'(fraction of next-latent variation a local-linear (s,a) map explains '
-          f'-- high => deterministic predictor suffices), residual_ratio='
-          f'{result["residual_ratio"]} (leftover stochastic spread), '
+    print(f'[mm] mode={args.mode}: det_R2={result["det_r2_mean"]} '
+          f'(deterministic-map share; high => deterministic model suffices), '
           f'residual_bimodal_frac={result["residual_bimodality_fraction"]} '
-          f'(of that leftover, fraction that is *multimodal* -- the diffusion edge)')
+          f'(multimodal share of the leftover -- the diffusion edge for this mode)')
 
     out = args.out or f'logs/multimodality_{args.tag}.json'
     Path(out).parent.mkdir(parents=True, exist_ok=True)
