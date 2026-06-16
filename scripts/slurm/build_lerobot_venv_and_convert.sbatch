@@ -51,7 +51,7 @@ $PY - <<'PYEOF'
 import lerobot, transformers
 print('[lerobot] lerobot', lerobot.__version__, '| transformers', transformers.__version__)
 from stable_worldmodel.data import load_dataset
-ds = load_dataset('lerobot://lerobot/pusht')
+ds = load_dataset('lerobot://lerobot/pusht_image')
 print('[lerobot] columns:', sorted(ds.column_names))
 print('[lerobot] n_episodes:', len(ds.lengths), '| first 3 lengths:', ds.lengths[:3].tolist())
 ep = ds.load_episode(0)
@@ -67,9 +67,9 @@ PYEOF
 # --- 3. Convert lerobot/pusht (206 human-teleop episodes) -> lance for the
 # existing 3.10 pipeline (cache_latents -> multimodality diagnostic -> train).
 OUT="$STABLEWM_HOME/datasets/pusht_human.lance"
-echo "[lerobot] converting lerobot://lerobot/pusht -> $OUT"
+echo "[lerobot] converting lerobot://lerobot/pusht_image -> $OUT"
 $PY scripts/data/convert.py \
-  --source lerobot://lerobot/pusht \
+  --source lerobot://lerobot/pusht_image \
   --dest "$OUT" \
   --mode overwrite
 
