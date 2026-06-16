@@ -132,13 +132,22 @@ def main():
     cond_scale = float(np.median(np.linalg.norm(condn, axis=1)))  # typical |cond|
     nbr_radius = float(np.median(dist[:, -1]))            # median farthest-neighbor
 
+    # Per neighborhood compute TWO families of stats:
+    #   raw      = total within-neighborhood spread of z'  (confounded by how
+    #              wide the (s,a) neighborhood is -- deterministic sensitivity
+    #              leaks in, and that scales with dataset sparsity/dim).
+    #   residual = spread AFTER removing a local-linear deterministic map
+    #              z' ~ W . (cond - cond_anchor). This subtracts the
+    #              deterministic component, isolating genuine conditional
+    #              stochasticity -- the only thing a diffusion model can exploit.
+    # The residual's bimodality says whether that stochasticity is *multimodal*
+    # (diffusion wins) or just unimodal Gaussian noise (diffusion gains nothing).
     cond_stds, bc_vals = [], []
-    for row in nbr:
+    res_stds, res_bc_vals, det_r2 = [], [], []
+    for a, row in zip(anchor_idx, nbr):
         zloc = znext[row]                                 # (k, D)
         cond_stds.append(np.sqrt(zloc.var(0).mean()))
-        # multimodality along the dominant direction of local variation
         zc = zloc - zloc.mean(0)
-        # top PCA direction via SVD (k x D, cheap)
         try:
             _, _, vt = np.linalg.svd(zc, full_matrices=False)
             proj = zc @ vt[0]
@@ -146,10 +155,32 @@ def main():
             proj = zc[:, 0]
         bc_vals.append(bimodality_coefficient(proj))
 
+        # Local-linear detrend: regress centered z' on centered cond.
+        dc = condn[row] - condn[a]                        # (k, C)
+        dc = np.concatenate([dc, np.ones((dc.shape[0], 1))], axis=1)  # + bias
+        W, *_ = np.linalg.lstsq(dc, zloc, rcond=None)     # (C+1, D)
+        resid = zloc - dc @ W                             # (k, D)
+        res_stds.append(np.sqrt(resid.var(0).mean()))
+        tot_var = zloc.var(0).mean()
+        det_r2.append(1.0 - resid.var(0).mean() / tot_var if tot_var > 0 else 0.0)
+        rc = resid - resid.mean(0)
+        try:
+            _, _, rvt = np.linalg.svd(rc, full_matrices=False)
+            rproj = rc @ rvt[0]
+        except np.linalg.LinAlgError:
+            rproj = rc[:, 0]
+        res_bc_vals.append(bimodality_coefficient(rproj))
+
     cond_std = float(np.mean(cond_stds))
     ratio = cond_std / marginal_std if marginal_std > 0 else 0.0
     bc_vals = np.asarray(bc_vals)
     bimodal_frac = float((bc_vals > 5.0 / 9.0).mean())
+
+    res_std = float(np.mean(res_stds))
+    res_ratio = res_std / marginal_std if marginal_std > 0 else 0.0
+    res_bc_vals = np.asarray(res_bc_vals)
+    res_bimodal_frac = float((res_bc_vals > 5.0 / 9.0).mean())
+    det_r2_mean = float(np.mean(det_r2))
 
     result = {
         'tag': args.tag,
@@ -160,18 +191,28 @@ def main():
         'n_anchors': int(len(anchor_idx)),
         'k': int(k),
         'marginal_std': round(marginal_std, 5),
+        # raw (confounded by neighborhood width -- kept for continuity)
         'conditional_std': round(cond_std, 5),
         'ratio_cond_over_marginal': round(ratio, 4),
         'bimodality_fraction': round(bimodal_frac, 4),
         'bimodality_coeff_median': round(float(np.median(bc_vals)), 4),
+        # detrended (the real signal): residual after a local-linear (s,a) map
+        'det_r2_mean': round(det_r2_mean, 4),
+        'residual_std': round(res_std, 5),
+        'residual_ratio': round(res_ratio, 4),
+        'residual_bimodality_fraction': round(res_bimodal_frac, 4),
+        'residual_bimodality_coeff_median': round(float(np.median(res_bc_vals)), 4),
+        # sanity
         'neighbor_radius_median': round(nbr_radius, 4),
         'cond_scale_median': round(cond_scale, 4),
     }
     print('[mm] RESULT', json.dumps(result, indent=2))
-    print(f'[mm] interpretation: ratio={result["ratio_cond_over_marginal"]} '
-          f'(0=deterministic, 1=pure noise), bimodal_frac='
-          f'{result["bimodality_fraction"]} '
-          f'(fraction of (s,a)-neighborhoods with split next-latent modes)')
+    print(f'[mm] interpretation: det_R2={result["det_r2_mean"]} '
+          f'(fraction of next-latent variation a local-linear (s,a) map explains '
+          f'-- high => deterministic predictor suffices), residual_ratio='
+          f'{result["residual_ratio"]} (leftover stochastic spread), '
+          f'residual_bimodal_frac={result["residual_bimodality_fraction"]} '
+          f'(of that leftover, fraction that is *multimodal* -- the diffusion edge)')
 
     out = args.out or f'logs/multimodality_{args.tag}.json'
     Path(out).parent.mkdir(parents=True, exist_ok=True)

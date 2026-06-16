@@ -29,9 +29,17 @@ python scripts/data/multimodality_diagnostic.py \
   --dataset tworoom_latent_e300.lance --tag tworoom \
   --cond-cols state action
 
-echo "[multimodal] PushT (pretrained-encoder latents) ..."
+echo "[multimodal] PushT (pretrained-encoder latents, full) ..."
 python scripts/data/multimodality_diagnostic.py \
   --dataset pusht_latent.lance --tag pusht \
   --cond-cols state action
 
-echo "[multimodal] done. JSONs in logs/multimodality_{tworoom,pusht}.json"
+# Density-matched control: same metric on PushT subsampled to ~TwoRoom size.
+# If the *detrended* residual metric barely moves between this and full PushT,
+# the dataset-size confound that poisoned the raw ratio is genuinely removed.
+echo "[multimodal] PushT (density-matched to TwoRoom, ~5.4k transitions) ..."
+python scripts/data/multimodality_diagnostic.py \
+  --dataset pusht_latent.lance --tag pusht_matched \
+  --cond-cols state action --max-frames 5400
+
+echo "[multimodal] done. JSONs in logs/multimodality_{tworoom,pusht,pusht_matched}.json"
