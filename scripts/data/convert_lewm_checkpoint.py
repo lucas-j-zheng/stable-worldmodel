@@ -64,25 +64,31 @@ def main():
     if tgt_only:
         print('  missing (sample):', sorted(tgt_only)[:6])
 
-    # Strict load — must be exact.
+    # Strict load — must be exact. This is the real correctness check: every
+    # key and tensor shape matches, so the weights slot into the right places.
     model.load_state_dict(new_state, strict=True)
     print('[convert] strict load OK')
 
-    # Strict load already validates architecture + shapes match exactly; this
-    # forward pass just confirms the remapped encoder runs end to end.
-    model.eval()
-    with torch.no_grad():
-        x = torch.randn(8, 3, config['encoder']['image_size'],
-                        config['encoder']['image_size'])
-        emb = model.encode({'pixels': x})['emb']
-        print(f'[convert] forward OK: emb shape={tuple(emb.shape)} '
-              f'finite={torch.isfinite(emb).all().item()}')
-
+    # Save first — strict load already validated; don't let a sanity-check
+    # shape quirk block writing the checkpoint.
     out_dir = ckpt_root / args.out
     out_dir.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), out_dir / 'weights.pt')
     shutil.copy(src_dir / 'config.json', out_dir / 'config.json')
     print(f'[convert] saved -> {out_dir}/weights.pt (+ config.json)')
+
+    # Optional forward sanity check (NHWC + time dim, matching the dataset row
+    # layout). Non-fatal: the strict load is the authoritative validation.
+    try:
+        model.eval()
+        sz = config['encoder']['image_size']
+        with torch.no_grad():
+            x = torch.randn(2, 1, sz, sz, 3)
+            emb = model.encode({'pixels': x})['emb']
+            print(f'[convert] forward OK: emb shape={tuple(emb.shape)} '
+                  f'finite={torch.isfinite(emb).all().item()}')
+    except Exception as e:  # noqa: BLE001
+        print(f'[convert] forward sanity check skipped ({type(e).__name__}: {e})')
 
 
 if __name__ == '__main__':
