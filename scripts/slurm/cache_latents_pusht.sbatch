@@ -19,9 +19,10 @@ export MUJOCO_GL=egl
 export STABLEWM_HOME=${STABLEWM_HOME:-/oscar/scratch/$USER/stable_worldmodel}
 export LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-$STABLEWM_HOME}
 # Source h5 already staged + decompressed under datasets/. Frozen encoder is
-# the official pretrained PushT LeWM, loaded straight from HF by load_pretrained.
+# the official pretrained PushT LeWM, key-remapped to current code by
+# convert_lewm_checkpoint.py (saved under checkpoints/lewm_pusht/).
 export PUSHT_DATA=${PUSHT_DATA:-pusht_expert_train.h5}
-export LEWM_CKPT=${LEWM_CKPT:-quentinll/lewm-pusht}
+export LEWM_CKPT=${LEWM_CKPT:-lewm_pusht/weights.pt}
 export PUSHT_LATENT_DATA=${PUSHT_LATENT_DATA:-pusht_latent.lance}
 
 mkdir -p logs "$STABLEWM_HOME/datasets" "$STABLEWM_HOME/checkpoints"

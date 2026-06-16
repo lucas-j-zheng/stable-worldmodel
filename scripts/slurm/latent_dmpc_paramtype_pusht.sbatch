@@ -21,7 +21,7 @@ export STABLEWM_HOME=${STABLEWM_HOME:-/oscar/scratch/$USER/stable_worldmodel}
 export LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-$STABLEWM_HOME}
 export PUSHT_DATA=${PUSHT_DATA:-pusht_expert_train.h5}
 export PUSHT_LATENT_DATA=${PUSHT_LATENT_DATA:-pusht_latent.lance}
-export LEWM_CKPT=${LEWM_CKPT:-quentinll/lewm-pusht}
+export LEWM_CKPT=${LEWM_CKPT:-lewm_pusht/weights.pt}
 
 mkdir -p logs
 
