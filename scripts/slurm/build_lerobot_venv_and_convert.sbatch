@@ -14,6 +14,13 @@ set -euo pipefail
 
 cd /users/lzheng35/Desktop/brown/world-models/stable-worldmodel
 
+# lerobot/pusht stores `pixels` as VIDEO, decoded by torchcodec, which needs
+# FFmpeg shared libs (libavutil/...). The bare node doesn't expose them ->
+# load Oscar's ffmpeg module so torchcodec finds a matching libav* (ffmpeg 7.1
+# -> libavutil.so.59; torchcodec probes ffmpeg 4-7 and picks the match).
+module load ffmpeg/7.1-7dmq 2>/dev/null || module load ffmpeg 2>/dev/null || true
+echo "[lerobot] ffmpeg libs: $(ls ${EBROOTFFMPEG:-/nonexistent}/lib/libavutil.so* 2>/dev/null | tr '\n' ' ')"
+
 export STABLEWM_HOME=${STABLEWM_HOME:-/oscar/scratch/$USER/stable_worldmodel}
 export LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-$STABLEWM_HOME}
 export HF_HOME=${HF_HOME:-$STABLEWM_HOME/hf_cache}     # keep HF cache off home quota
