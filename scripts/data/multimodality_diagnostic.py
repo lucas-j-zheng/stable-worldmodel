@@ -55,38 +55,49 @@ from sklearn.neighbors import BallTree
 # import chain can break on optional deps.
 
 
-def build_pairs(ds, max_frames, mode, rng, chunk=8):
+def _state_col(present):
+    """The physical-state column, tolerating the LeRobot loader's `proprio`
+    alias (observation.state -> proprio) when no explicit `state` exists."""
+    for c in ('state', 'proprio'):
+        if c in present:
+            return c
+    return None
+
+
+def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent'):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
     policy       : cond = [state]_t,          target = action_t.
-    policy_chunk : cond = latent_t (the partial obs the policy sees),
-                   target = flattened action chunk [a_t .. a_{t+H-1}].
-                   This is the faithful Diffusion-Policy setting: multimodality
-                   lives in obs-conditioned action *sequences*, not single-step
-                   full-state actions. Conditioning on z (image-derived, partial)
-                   instead of the full physical state keeps the ambiguity DP
-                   exploits; chunking captures sequence-level branching.
+    policy_chunk : cond = obs_t, target = flattened action chunk [a_t..a_{t+H-1}].
+                   The faithful Diffusion-Policy setting: multimodality lives in
+                   obs-conditioned action *sequences*, not single-step actions.
+                   cond_from='latent' (partial obs the policy sees) or 'state'
+                   (ground-truth physical state -- ENCODER-FREE, the cleanest
+                   cross-dataset test with no domain-gap confound).
+    `state` falls back to the LeRobot `proprio` alias when absent.
     """
     present = set(ds.column_names)
+    scol = _state_col(present)
     if mode == 'dynamics':
-        cond_cols = [c for c in ('state', 'action') if c in present]
+        cond_cols = [c for c in (scol, 'action') if c]
         if 'action' not in cond_cols:
             raise SystemExit(f'dynamics needs action; have {sorted(present)}')
         target_col, shift = 'latent', True
     elif mode == 'policy':
-        cond_cols = [c for c in ('state',) if c in present]
-        if not cond_cols or 'action' not in present:
-            raise SystemExit(f'policy needs state+action; have {sorted(present)}')
-        target_col, shift = 'action', False
+        if not scol or 'action' not in present:
+            raise SystemExit(f'policy needs state/proprio+action; have {sorted(present)}')
+        cond_cols, target_col, shift = [scol], 'action', False
     elif mode == 'policy_chunk':
-        if 'latent' not in present or 'action' not in present:
-            raise SystemExit(f'policy_chunk needs latent+action; have {sorted(present)}')
+        src = 'latent' if cond_from == 'latent' else scol
+        if not src or 'action' not in present:
+            raise SystemExit(f'policy_chunk needs {cond_from}+action; have {sorted(present)}')
     else:
         raise SystemExit(f'unknown mode {mode}')
 
     if mode == 'policy_chunk':
-        print(f'[mm] mode=policy_chunk cond=latent target=action_chunk(H={chunk})')
+        src = 'latent' if cond_from == 'latent' else scol
+        print(f'[mm] mode=policy_chunk cond={src} target=action_chunk(H={chunk})')
         ep_order = rng.permutation(len(ds.lengths))
         conds, targs = [], []
         n = 0
@@ -96,17 +107,17 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8):
             if T <= chunk:
                 continue
             data = ds.load_episode(ep)
-            z = np.asarray(data['latent'], dtype=np.float32).reshape(T, -1)
+            c = np.asarray(data[src], dtype=np.float32).reshape(T, -1)
             a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
             for t in range(0, T - chunk):
-                conds.append(z[t])
+                conds.append(c[t])
                 targs.append(a[t:t + chunk].reshape(-1))
             n += T - chunk
             if n >= max_frames:
                 break
         cond = np.asarray(conds, dtype=np.float32)
         tgt = np.asarray(targs, dtype=np.float32)
-        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} (latent), '
+        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} ({src}), '
               f'target_dim={tgt.shape[1]} ({chunk}x action)')
         return cond, tgt
 
@@ -260,6 +271,8 @@ def main():
     ap.add_argument('--mode', choices=['dynamics', 'policy', 'policy_chunk'],
                     default='dynamics')
     ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
+    ap.add_argument('--cond-from', choices=['latent', 'state'], default='latent',
+                    help='policy_chunk conditioning source (state = encoder-free)')
     ap.add_argument('--cond-pca', type=int, default=0,
                     help='if >0, PCA-reduce cond to this many dims before k-NN')
     ap.add_argument('--max-frames', type=int, default=200_000)
@@ -285,7 +298,8 @@ def main():
         raise SystemExit('provide --dataset or --self-test')
     import stable_worldmodel as swm
     ds = swm.data.load_dataset(args.dataset)
-    cond, target = build_pairs(ds, args.max_frames, args.mode, rng, chunk=args.chunk)
+    cond, target = build_pairs(ds, args.max_frames, args.mode, rng, chunk=args.chunk,
+                               cond_from=args.cond_from)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
