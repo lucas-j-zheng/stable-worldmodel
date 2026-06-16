@@ -53,11 +53,18 @@ from sklearn.neighbors import BallTree
 import stable_worldmodel as swm
 
 
-def build_pairs(ds, max_frames, mode, rng):
+def build_pairs(ds, max_frames, mode, rng, chunk=8):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
-    dynamics: cond = [state, action]_t, target = latent_{t+1}.
-    policy:   cond = [state]_t,         target = action_t.
+    dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
+    policy       : cond = [state]_t,          target = action_t.
+    policy_chunk : cond = latent_t (the partial obs the policy sees),
+                   target = flattened action chunk [a_t .. a_{t+H-1}].
+                   This is the faithful Diffusion-Policy setting: multimodality
+                   lives in obs-conditioned action *sequences*, not single-step
+                   full-state actions. Conditioning on z (image-derived, partial)
+                   instead of the full physical state keeps the ambiguity DP
+                   exploits; chunking captures sequence-level branching.
     """
     present = set(ds.column_names)
     if mode == 'dynamics':
@@ -70,10 +77,38 @@ def build_pairs(ds, max_frames, mode, rng):
         if not cond_cols or 'action' not in present:
             raise SystemExit(f'policy needs state+action; have {sorted(present)}')
         target_col, shift = 'action', False
+    elif mode == 'policy_chunk':
+        if 'latent' not in present or 'action' not in present:
+            raise SystemExit(f'policy_chunk needs latent+action; have {sorted(present)}')
     else:
         raise SystemExit(f'unknown mode {mode}')
-    print(f'[mm] mode={mode} cond={cond_cols} target={target_col} shift={shift}')
 
+    if mode == 'policy_chunk':
+        print(f'[mm] mode=policy_chunk cond=latent target=action_chunk(H={chunk})')
+        ep_order = rng.permutation(len(ds.lengths))
+        conds, targs = [], []
+        n = 0
+        for ep in ep_order:
+            ep = int(ep)
+            T = int(ds.lengths[ep])
+            if T <= chunk:
+                continue
+            data = ds.load_episode(ep)
+            z = np.asarray(data['latent'], dtype=np.float32).reshape(T, -1)
+            a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
+            for t in range(0, T - chunk):
+                conds.append(z[t])
+                targs.append(a[t:t + chunk].reshape(-1))
+            n += T - chunk
+            if n >= max_frames:
+                break
+        cond = np.asarray(conds, dtype=np.float32)
+        tgt = np.asarray(targs, dtype=np.float32)
+        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} (latent), '
+              f'target_dim={tgt.shape[1]} ({chunk}x action)')
+        return cond, tgt
+
+    print(f'[mm] mode={mode} cond={cond_cols} target={target_col} shift={shift}')
     ep_order = rng.permutation(len(ds.lengths))
     conds, targs = [], []
     n = 0
@@ -101,6 +136,18 @@ def build_pairs(ds, max_frames, mode, rng):
     print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]}, '
           f'target_dim={tgt.shape[1]}')
     return cond, tgt
+
+
+def pca_reduce(x, n_comp):
+    """Standardize then project onto top-n_comp PCs. High-dim k-NN (192-d latent)
+    suffers distance concentration; reduce so neighborhoods are meaningful."""
+    xs = (x - x.mean(0)) / (x.std(0) + 1e-8)
+    _, s, vt = np.linalg.svd(xs - xs.mean(0), full_matrices=False)
+    k = min(n_comp, vt.shape[0])
+    var = (s ** 2)
+    kept = float(var[:k].sum() / var.sum())
+    print(f'[mm] PCA cond {x.shape[1]}->{k} dims, variance kept={kept:.3f}')
+    return xs @ vt[:k].T
 
 
 def bimodality_coefficient(x):
@@ -180,7 +227,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dataset', required=True, help='latent .lance name under datasets/')
     ap.add_argument('--tag', required=True, help='label for the output')
-    ap.add_argument('--mode', choices=['dynamics', 'policy'], default='dynamics')
+    ap.add_argument('--mode', choices=['dynamics', 'policy', 'policy_chunk'],
+                    default='dynamics')
+    ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
+    ap.add_argument('--cond-pca', type=int, default=0,
+                    help='if >0, PCA-reduce cond to this many dims before k-NN')
     ap.add_argument('--max-frames', type=int, default=200_000)
     ap.add_argument('--n-anchors', type=int, default=4000)
     ap.add_argument('--k', type=int, default=64, help='neighbors per anchor')
@@ -190,11 +241,18 @@ def main():
 
     rng = np.random.default_rng(args.seed)
     ds = swm.data.load_dataset(args.dataset)
-    cond, target = build_pairs(ds, args.max_frames, args.mode, rng)
+    cond, target = build_pairs(ds, args.max_frames, args.mode, rng, chunk=args.chunk)
+
+    cond_dim_raw = int(cond.shape[1])
+    # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
+    n_pca = args.cond_pca or (32 if cond.shape[1] > 48 else 0)
+    if n_pca:
+        cond = pca_reduce(cond, n_pca)
 
     stats = analyze(cond, target, args.n_anchors, args.k, rng)
     result = {'tag': args.tag, 'dataset': args.dataset, 'mode': args.mode,
-              'n_pairs': int(cond.shape[0]), 'cond_dim': int(cond.shape[1]),
+              'n_pairs': int(cond.shape[0]), 'cond_dim_raw': cond_dim_raw,
+              'cond_dim_used': int(cond.shape[1]), 'chunk': args.chunk,
               'target_dim': int(target.shape[1]), 'k': min(args.k, cond.shape[0]),
               **stats}
     print('[mm] RESULT', json.dumps(result, indent=2))

@@ -34,6 +34,12 @@ for entry in "${DOMAINS[@]}"; do
     python scripts/data/multimodality_diagnostic.py \
       --dataset "$ds" --tag "${dom}_${mode}" --mode "$mode"
   done
+  # Faithful Diffusion-Policy probe: condition on the latent (partial obs the
+  # policy actually sees, PCA'd), target the H=8 action chunk. This is the test
+  # that decides "pivot to diffusion policy" vs "pivot domains".
+  echo "[multimodal] ${dom} / policy_chunk(H=8) ..."
+  python scripts/data/multimodality_diagnostic.py \
+    --dataset "$ds" --tag "${dom}_policychunk" --mode policy_chunk --chunk 8
 done
 
-echo "[multimodal] done. JSONs: logs/multimodality_{tworoom,pusht}_{dynamics,policy}.json"
+echo "[multimodal] done. JSONs: logs/multimodality_{tworoom,pusht}_{dynamics,policy,policychunk}.json"
