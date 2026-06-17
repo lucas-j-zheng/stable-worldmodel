@@ -191,10 +191,30 @@ def top_pc_projection(mat):
 
 
 def analyze(cond, target, n_anchors, k, rng):
-    """k-NN-in-cond + local-linear detrend stats for P(target | cond)."""
+    """k-NN-in-cond + local-linear detrend stats for P(target | cond).
+
+    OVERFIT GUARD: the per-neighborhood detrend fits (cond_dim + 1) params from k
+    neighbors. If k is not >> params, the fit overfits -> det_R2 inflated and the
+    residual whitened toward Gaussian (residual_bimodal spuriously -> 0). We
+    require k >= 10*(cond_dim + 1); auto-bump k if possible, and flag when even
+    the data can't supply enough neighbors (result then under-powered, not wrong).
+    """
     cmu, csd = cond.mean(0), cond.std(0) + 1e-8
     condn = (cond - cmu) / csd
     marginal_std = float(np.sqrt(target.var(0).mean()))
+
+    n = condn.shape[0]
+    params = condn.shape[1] + 1
+    k_min = 10 * params
+    k_eff = min(max(k, k_min), n - 1)
+    overfit_risk = k_eff < 4 * params           # couldn't get a safe ratio
+    if k_eff != k:
+        print(f'[mm] overfit guard: cond_dim={condn.shape[1]} -> k {k}->{k_eff} '
+              f'(need >= {k_min}; n={n})')
+    if overfit_risk:
+        print(f'[mm] WARNING: k_eff={k_eff} < 4*params={4*params}; detrend '
+              f'under-powered, residual_bimodal unreliable for this run')
+    k = k_eff
 
     tree = BallTree(condn)
     anchors = rng.choice(condn.shape[0], size=min(n_anchors, condn.shape[0]),
@@ -233,6 +253,9 @@ def analyze(cond, target, n_anchors, k, rng):
         'residual_bimodality_coeff_median': round(float(np.median(res_bc_vals)), 4),
         'neighbor_radius_median': round(float(np.median(dist[:, -1])), 4),
         'cond_scale_median': round(float(np.median(np.linalg.norm(condn, axis=1))), 4),
+        'k_used': int(k),
+        'params_per_fit': int(params),
+        'overfit_risk': bool(overfit_risk),
     }
 
 
