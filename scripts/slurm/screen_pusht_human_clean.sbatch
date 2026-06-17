@@ -20,7 +20,9 @@ export STABLEWM_HOME=${STABLEWM_HOME:-/oscar/scratch/$USER/stable_worldmodel}
 export LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-$STABLEWM_HOME}
 mkdir -p logs
 
-python -c "import zarr" 2>/dev/null || pip install -q "zarr<3" "numcodecs"
+# The uv-created .venv has no pip -> bare `pip` hits conda's pip and installs to
+# the wrong env. Use `uv pip` which targets the activated VIRTUAL_ENV.
+python -c "import zarr" 2>/dev/null || "$HOME/.local/bin/uv" pip install -q "zarr<3" numcodecs
 
 # 1. Human full 5-D state (agent+block) + action from the DP zarr.
 echo "[clean] extracting human full-state from DP zarr ..."
