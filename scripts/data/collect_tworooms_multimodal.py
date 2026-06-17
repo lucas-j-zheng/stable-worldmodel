@@ -22,11 +22,19 @@ from stable_worldmodel.envs.two_room import ExpertPolicy
 @hydra.main(version_base=None, config_path='./config', config_name='default')
 def run(cfg):
     world = swm.World('swm/TwoRoom-v1', **cfg.world, render_mode='rgb_array')
+    # action_noise=0: TwoRoom actions are unit-magnitude direction vectors, so
+    # std-2.0 Gaussian noise (the default collect setting) is mostly noise and
+    # SWAMPS the door-choice modes (separation ~1) into overlap -> the screen
+    # then reads unimodal. Keep it clean so the two routes are separable modes.
+    # stochastic_door / out_name overridable so the same 2-door geometry yields
+    # both the multimodal (random door) and greedy (closest door) baselines.
+    stochastic = bool(cfg.get('stochastic_door', True))
+    out_name = cfg.get('out_name', 'tworoom_multimodal.lance')
     world.set_policy(
         ExpertPolicy(
-            action_noise=2.0,
-            action_repeat_prob=0.05,
-            stochastic_door=True,   # random committed door per episode
+            action_noise=0.0,
+            action_repeat_prob=0.0,
+            stochastic_door=stochastic,
             seed=cfg.seed,
         )
     )
@@ -47,7 +55,7 @@ def run(cfg):
     out = (
         Path(cfg.cache_dir or swm.data.utils.get_cache_dir())
         / 'datasets'
-        / 'tworoom_multimodal.lance'
+        / out_name
     )
     world.collect(
         out,
@@ -55,7 +63,9 @@ def run(cfg):
         seed=rng.integers(0, 1_000_000).item(),
         options=options,
     )
-    logging.success(f' 🎉 multimodal tworoom collected -> {out}')
+    logging.success(
+        f' 🎉 tworoom collected (stochastic_door={stochastic}) -> {out}'
+    )
 
 
 if __name__ == '__main__':
