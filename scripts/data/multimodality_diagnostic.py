@@ -64,7 +64,8 @@ def _state_col(present):
     return None
 
 
-def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent'):
+def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
+                cond_cols_override=None):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
@@ -79,25 +80,34 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent'):
     """
     present = set(ds.column_names)
     scol = _state_col(present)
+    # Explicit conditioning columns (e.g. `state goal_state` = agent+target) let
+    # the screen condition on the FULL deterministic structure so the detrend can
+    # isolate the residual (e.g. door-choice) multimodality. Without strong
+    # conditioning the screen just measures the marginal action distribution.
+    override = list(cond_cols_override) if cond_cols_override else None
+    if override:
+        miss = [c for c in override if c not in present]
+        if miss:
+            raise SystemExit(f'--cond-cols {miss} absent; have {sorted(present)}')
     if mode == 'dynamics':
-        cond_cols = [c for c in (scol, 'action') if c]
-        if 'action' not in cond_cols:
+        cond_cols = override or [c for c in (scol, 'action') if c]
+        if not override and 'action' not in cond_cols:
             raise SystemExit(f'dynamics needs action; have {sorted(present)}')
         target_col, shift = 'latent', True
     elif mode == 'policy':
-        if not scol or 'action' not in present:
+        if not (override or scol) or 'action' not in present:
             raise SystemExit(f'policy needs state/proprio+action; have {sorted(present)}')
-        cond_cols, target_col, shift = [scol], 'action', False
+        cond_cols, target_col, shift = override or [scol], 'action', False
     elif mode == 'policy_chunk':
-        src = 'latent' if cond_from == 'latent' else scol
-        if not src or 'action' not in present:
+        src_cols = override or ([scol] if cond_from != 'latent' else ['latent'])
+        if not all(src_cols) or 'action' not in present:
             raise SystemExit(f'policy_chunk needs {cond_from}+action; have {sorted(present)}')
     else:
         raise SystemExit(f'unknown mode {mode}')
 
     if mode == 'policy_chunk':
-        src = 'latent' if cond_from == 'latent' else scol
-        print(f'[mm] mode=policy_chunk cond={src} target=action_chunk(H={chunk})')
+        src_cols = override or ([scol] if cond_from != 'latent' else ['latent'])
+        print(f'[mm] mode=policy_chunk cond={src_cols} target=action_chunk(H={chunk})')
         ep_order = rng.permutation(len(ds.lengths))
         conds, targs = [], []
         n = 0
@@ -107,7 +117,9 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent'):
             if T <= chunk:
                 continue
             data = ds.load_episode(ep)
-            c = np.asarray(data[src], dtype=np.float32).reshape(T, -1)
+            c = np.concatenate(
+                [np.asarray(data[col], dtype=np.float32).reshape(T, -1)
+                 for col in src_cols], axis=1)
             a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
             for t in range(0, T - chunk):
                 conds.append(c[t])
@@ -117,7 +129,7 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent'):
                 break
         cond = np.asarray(conds, dtype=np.float32)
         tgt = np.asarray(targs, dtype=np.float32)
-        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} ({src}), '
+        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} ({src_cols}), '
               f'target_dim={tgt.shape[1]} ({chunk}x action)')
         return cond, tgt
 
@@ -296,6 +308,8 @@ def main():
     ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
     ap.add_argument('--cond-from', choices=['latent', 'state'], default='latent',
                     help='policy_chunk conditioning source (state = encoder-free)')
+    ap.add_argument('--cond-cols', nargs='+', default=None,
+                    help='explicit conditioning columns (e.g. state goal_state)')
     ap.add_argument('--cond-pca', type=int, default=0,
                     help='if >0, PCA-reduce cond to this many dims before k-NN')
     ap.add_argument('--max-frames', type=int, default=200_000)
@@ -322,7 +336,8 @@ def main():
     import stable_worldmodel as swm
     ds = swm.data.load_dataset(args.dataset)
     cond, target = build_pairs(ds, args.max_frames, args.mode, rng, chunk=args.chunk,
-                               cond_from=args.cond_from)
+                               cond_from=args.cond_from,
+                               cond_cols_override=args.cond_cols)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
