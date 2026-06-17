@@ -16,6 +16,7 @@ class ExpertPolicy(BasePolicy):
         action_repeat_prob: float = 0.0,
         door_fit_margin: float = 1.10,
         door_reach_tol: float | None = None,
+        stochastic_door: bool = False,
         seed: int | None = None,
         **kwargs,
     ):
@@ -25,6 +26,13 @@ class ExpertPolicy(BasePolicy):
         self.door_fit_margin = float(door_fit_margin)
         # If None, will default to ~3*scale per-env at runtime
         self.door_reach_tol = door_reach_tol
+        # stochastic_door: commit to a RANDOM fitting door per episode instead of
+        # the closest one -> makes P(action|state) genuinely multimodal (same
+        # state, different committed route across episodes). The default (False)
+        # keeps the original greedy behavior. Per-env episode state below.
+        self.stochastic_door = bool(stochastic_door)
+        self._committed: dict[int, int] = {}
+        self._prev_goal: dict[int, tuple] = {}
         self.set_seed(seed)
 
     def set_seed(self, seed: int | None) -> None:
@@ -107,30 +115,38 @@ class ExpertPolicy(BasePolicy):
                     env.variation_space['agent']['radius'].value.item()
                 )
 
-                # Choose closest door center that fits
-                best = None
-                best_dist = float('inf')
-
+                # Doors that fit the agent (opening half-extent exceeds radius).
+                fitting = []
                 for c_1d, s in zip(door_pos, door_size):
-                    # Fit test: opening half-extent should exceed radius (with margin)
                     if float(s) < self.door_fit_margin * agent_radius:
                         continue
-
                     if wall_axis == 1:
                         # vertical wall at x=wall_pos, door center at y=c_1d
-                        door_center = np.array(
-                            [wall_pos, float(c_1d)], dtype=np.float32
+                        fitting.append(
+                            np.array([wall_pos, float(c_1d)], dtype=np.float32)
                         )
                     else:
                         # horizontal wall at y=wall_pos, door center at x=c_1d
-                        door_center = np.array(
-                            [float(c_1d), wall_pos], dtype=np.float32
+                        fitting.append(
+                            np.array([float(c_1d), wall_pos], dtype=np.float32)
                         )
 
-                    d = float(np.linalg.norm(door_center - agent_pos))
-                    if d < best_dist:
-                        best_dist = d
-                        best = door_center
+                if not fitting:
+                    best = None
+                elif self.stochastic_door:
+                    # Commit to a random fitting door per EPISODE. Resample when
+                    # the goal changes (reset signal) -> the committed route is
+                    # independent of the observable state, so the SAME state maps
+                    # to different actions across episodes = true multimodality.
+                    gkey = tuple(np.round(goal_pos, 2).tolist())
+                    if self._prev_goal.get(i) != gkey:
+                        self._committed[i] = int(self.rng.integers(len(fitting)))
+                        self._prev_goal[i] = gkey
+                    best = fitting[min(self._committed.get(i, 0), len(fitting) - 1)]
+                else:
+                    # Greedy: closest fitting door (original behavior).
+                    dists = [float(np.linalg.norm(dc - agent_pos)) for dc in fitting]
+                    best = fitting[int(np.argmin(dists))]
 
                 if best is None:
                     # Fallback: go to the wall aligned with target (still better than nothing)
