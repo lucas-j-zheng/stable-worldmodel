@@ -206,6 +206,14 @@ def run(cfg: DictConfig):
             )
         print('Warmup done.')
 
+    # Optional env reset options (e.g. fixed multi-door TwoRoom geometry) so the
+    # eval scene matches the training-data distribution.
+    eval_options = (
+        OmegaConf.to_container(cfg.eval.get('options'), resolve=True)
+        if cfg.eval.get('options') is not None
+        else None
+    )
+
     start_time = time.time()
     with autocast_ctx:
         metrics = world.evaluate(
@@ -217,6 +225,7 @@ def run(cfg: DictConfig):
             callables=OmegaConf.to_container(
                 cfg.eval.get('callables'), resolve=True
             ),
+            options=eval_options,
             video=results_path,
         )
     end_time = time.time()
