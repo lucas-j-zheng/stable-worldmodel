@@ -11,7 +11,10 @@ train_split: 0.9
 seed: 3072
 img_size: 224
 embed_dim: 192
-action_dim: 2          # RAW action dim (TwoRoom / PushT = 2)
+# Action dim is the cached block = raw_action_dim * action_block (frameskip).
+# TwoRoom/PushT: raw 2 * frameskip 5 = 10. Matches the CEM solver's action_dim
+# (raw * action_block) so the policy output plugs into the same eval harness.
+action_dim: 10
 checkpoint_interval: 5
 # Trainable submodule: model.denoiser (DiffusionPolicy) or model.net (MLPPolicy).
 train_module: model.denoiser
