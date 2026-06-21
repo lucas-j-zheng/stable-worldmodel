@@ -1,0 +1,71 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: tworoom_latent   # cached latents (latent + action); override per domain
+
+output_model_name: diffusion_policy
+subdir: ${hydra:job.id}
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+img_size: 224
+embed_dim: 192
+action_dim: 2          # RAW action dim (TwoRoom / PushT = 2)
+checkpoint_interval: 5
+# Trainable submodule: model.denoiser (DiffusionPolicy) or model.net (MLPPolicy).
+train_module: model.denoiser
+
+trainer:
+  max_epochs: 100
+  devices: auto
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+loader:
+  batch_size: 128
+  num_workers: ${num_workers}
+  drop_last: True
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+  shuffle: True
+
+optimizer:
+  type: AdamW
+  lr: 1e-4
+  weight_decay: 1e-3
+
+wm:
+  history_size: 3
+  horizon: 8
+  num_preds: ${wm.horizon}
+
+wandb:
+  enabled: false
+
+model:
+  _target_: stable_worldmodel.wm.diffusion_policy.DiffusionPolicy
+  lewm_checkpoint: ???
+  freeze_lewm: true
+  action_dim: ${action_dim}
+  history_size: ${wm.history_size}
+  horizon: ${wm.horizon}
+  num_diffusion_steps: 100
+  schedule: cosine
+  num_inference_steps: 16
+  eta: 0.0
+  prediction_type: v
+  clip_sample: 3.0       # normalized actions ~N(0,I)
+  denoiser:
+    _target_: stable_worldmodel.wm.diffusion_policy.module.ActionTrajectoryDenoiser
+    action_dim: ${action_dim}
+    latent_dim: ${embed_dim}
+    hidden_dim: ${embed_dim}
+    max_seq_len: ${eval:'${wm.history_size} + 1 + ${wm.horizon}'}
+    depth: 6
+    heads: 8
+    mlp_dim: 1024
+    dim_head: 64
+    dropout: 0.1
