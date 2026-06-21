@@ -73,17 +73,27 @@ def run(cfg):
     # action target internally. `latent` is already ~N(0,I) (SIGReg).
     dataset.transform = spt.data.transforms.Compose(*transforms) if transforms else None
 
-    # Action stats for the model's internal normalization (NaN-safe over resets).
-    acts = np.asarray(dataset.get_col_data('action'), dtype=np.float32)
-    acts = acts.reshape(-1, acts.shape[-1])
-    a_mean = np.nanmean(acts, axis=0)
-    a_std = np.nanstd(acts, axis=0)
-    print(f'[dp] action mean={a_mean} std={a_std}')
-
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     train_set, val_set = spt.data.random_split(
         dataset, lengths=[cfg.train_split, 1 - cfg.train_split], generator=rnd_gen)
     train = torch.utils.data.DataLoader(train_set, **cfg.loader, generator=rnd_gen)
+
+    # Action stats for the model's internal normalization. Compute from actual
+    # batches so the dim matches what the model sees (the DataLoader blocks the
+    # action by frameskip: raw 2 -> 10), NaN-masked over reset frames.
+    acc, seen = [], 0
+    for b in train:
+        a = b['action'].reshape(-1, b['action'].shape[-1]).float()
+        acc.append(a); seen += a.shape[0]
+        if seen >= 50000:
+            break
+    acts = torch.cat(acc, 0)
+    mask = ~torch.isnan(acts)
+    cnt = mask.sum(0).clamp_min(1)
+    a_mean = torch.nan_to_num(acts).sum(0) / cnt
+    a_var = (((torch.nan_to_num(acts) - a_mean) ** 2) * mask).sum(0) / cnt
+    a_std = a_var.sqrt()
+    print(f'[dp] action_dim={acts.shape[-1]} mean={a_mean.tolist()} std={a_std.tolist()}')
     val_cfg = {**cfg.loader}; val_cfg['shuffle'] = False; val_cfg['drop_last'] = False
     val = torch.utils.data.DataLoader(val_set, **val_cfg)
 
