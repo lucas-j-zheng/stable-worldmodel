@@ -1,0 +1,3 @@
+_target_: stable_worldmodel.solver.DiffusionPolicySolver
+model: ???
+device: cuda

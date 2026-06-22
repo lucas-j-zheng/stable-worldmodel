@@ -1,5 +1,6 @@
 from .categorical_cem import CategoricalCEMSolver
 from .cem import CEMSolver
+from .diffusion_policy_solver import DiffusionPolicySolver
 from .gd import GradientSolver
 from .icem import ICEMSolver
 from .lagrangian import LagrangianSolver

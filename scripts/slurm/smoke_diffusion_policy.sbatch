@@ -35,7 +35,6 @@ python scripts/train/train_diffusion_policy.py \
   ~model.denoiser ~model.num_diffusion_steps ~model.schedule \
   ~model.num_inference_steps ~model.eta ~model.prediction_type ~model.clip_sample \
   model.lewm_checkpoint=lewm_tworoom/weights_epoch_300.pt \
-  model.latent_dim=192 \
   output_model_name=mlp_smoke train_module=model.net \
   trainer.max_epochs=3 trainer.accelerator=gpu trainer.devices=1 \
   loader.batch_size=64 num_workers=4 loader.num_workers=4 checkpoint_interval=3
