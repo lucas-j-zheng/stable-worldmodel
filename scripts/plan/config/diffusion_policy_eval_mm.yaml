@@ -1,0 +1,58 @@
+defaults:
+  - launcher: local
+  - solver: diffusion_policy
+  - _self_
+
+# Closed-loop eval of a trained policy on the 2-door MULTIMODAL TwoRoom. Fixed
+# 2-door geometry + the mm dataset for init/goal states, matching the training
+# distribution (and the 2-door-retrained encoder).
+
+world:
+  env_name: swm/TwoRoom-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ???
+
+dataset:
+  stats: ${eval.dataset_name}
+  keys_to_cache:
+    - action
+    - proprio
+
+seed: 42
+policy: ???
+
+plan_config:
+  horizon: 8
+  receding_horizon: 5
+  history_len: 3
+  action_block: 5
+
+solver:
+  device: cuda
+
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  img_size: 224
+  dataset_name: tworoom_mm0.lance
+  options:
+    variation_values:
+      door.number: 2
+      door.position: [60, 164, 49]
+      door.size: [14, 14, 14]
+  callables:
+    - method: _set_state
+      args:
+        state:
+          value: state
+    - method: _set_goal_state
+      args:
+        goal_state:
+          value: goal_state
+
+compile: false
+bf16: false
+
+output:
+  filename: diffusion_policy_eval_mm_results.txt
