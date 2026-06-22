@@ -7,6 +7,7 @@ is NO planning/CEM here -- the policy directly samples an action chunk from
 planner over a dynamics model).
 """
 
+import numpy as np
 import torch
 
 
@@ -23,7 +24,21 @@ class DiffusionPolicySolver:
         self._action_space = action_space
         self._n_envs = n_envs
         self._config = config
+        self._action_dim = int(np.prod(action_space.shape[1:])) * config.action_block
         self._configured = True
+
+    # --- Solver protocol (runtime_checkable) requires these properties ---
+    @property
+    def action_dim(self) -> int:
+        return self._action_dim
+
+    @property
+    def n_envs(self) -> int:
+        return self._n_envs
+
+    @property
+    def horizon(self) -> int:
+        return self._config.horizon
 
     @property
     def history_size(self) -> int:
