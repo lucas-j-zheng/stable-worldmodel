@@ -18,7 +18,9 @@ export STABLEWM_HOME=${STABLEWM_HOME:-/oscar/scratch/$USER/stable_worldmodel}
 export LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-$STABLEWM_HOME}
 mkdir -p logs
 
-ENC=lewm_tworoom_mm/weights_epoch_300.pt
+# Encoder hit the 8h time limit at epoch 297/300 (saves every epoch, so 297 is
+# effectively converged). Use it -- no need to burn another 8h for 3 epochs.
+ENC=${ENC:-lewm_tworoom_mm/weights_epoch_297.pt}
 EP=${EP:-250}
 
 # 1. Cache mm latents with the 2-door encoder (in-distribution).
