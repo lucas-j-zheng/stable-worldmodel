@@ -17,6 +17,7 @@ class ExpertPolicy(BasePolicy):
         door_fit_margin: float = 1.10,
         door_reach_tol: float | None = None,
         stochastic_door: bool = False,
+        door_prob: float = 0.5,
         seed: int | None = None,
         **kwargs,
     ):
@@ -30,7 +31,11 @@ class ExpertPolicy(BasePolicy):
         # the closest one -> makes P(action|state) genuinely multimodal (same
         # state, different committed route across episodes). The default (False)
         # keeps the original greedy behavior. Per-env episode state below.
+        # door_prob: with exactly 2 fitting doors, the probability of door 0
+        # (vs door 1). 0.5 = maximally bimodal; ->1.0 = unimodal (always door 0).
+        # This is the dose knob for the multimodality dose-response.
         self.stochastic_door = bool(stochastic_door)
+        self.door_prob = float(door_prob)
         self._committed: dict[int, int] = {}
         self._prev_goal: dict[int, tuple] = {}
         self.set_seed(seed)
@@ -140,7 +145,14 @@ class ExpertPolicy(BasePolicy):
                     # to different actions across episodes = true multimodality.
                     gkey = tuple(np.round(goal_pos, 2).tolist())
                     if self._prev_goal.get(i) != gkey:
-                        self._committed[i] = int(self.rng.integers(len(fitting)))
+                        if len(fitting) == 2:
+                            # Bernoulli(door_prob) over the two doors -> tunes the
+                            # multimodality dose (0.5 bimodal ... 1.0 unimodal).
+                            self._committed[i] = (
+                                0 if self.rng.random() < self.door_prob else 1
+                            )
+                        else:
+                            self._committed[i] = int(self.rng.integers(len(fitting)))
                         self._prev_goal[i] = gkey
                     best = fitting[min(self._committed.get(i, 0), len(fitting) - 1)]
                 else:

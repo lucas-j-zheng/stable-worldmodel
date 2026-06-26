@@ -30,11 +30,13 @@ def run(cfg):
     # both the multimodal (random door) and greedy (closest door) baselines.
     stochastic = bool(cfg.get('stochastic_door', True))
     out_name = cfg.get('out_name', 'tworoom_multimodal.lance')
+    door_prob = float(cfg.get('door_prob', 0.5))   # dose knob (0.5 bimodal..1 unimodal)
     world.set_policy(
         ExpertPolicy(
             action_noise=0.0,
             action_repeat_prob=0.0,
             stochastic_door=stochastic,
+            door_prob=door_prob,
             seed=cfg.seed,
         )
     )
