@@ -341,11 +341,30 @@ class TwoRoomEnv(gym.Env):
         return state
 
     def _get_info(self):
+        # door_state = the (hidden) door-center configuration, MAX_DOOR*2 coords
+        # zero-padded exactly like the door block of _get_obs. The observation
+        # the agent/encoder sees is `state` (agent position) only, so doors are
+        # part of the world but NOT observed -> conditioning on `state` alone is
+        # the POMDP the dynamics model sees; conditioning on `state`+`door_state`
+        # is full observability. Recording it lets the multimodality screen run
+        # the with/without-doors contrast (does partial obs make p(next|obs,a)
+        # multimodal near the wall?).
+        door_coords = []
+        for i in range(self.MAX_DOOR):
+            if i < self.num_doors:
+                center_1d = float(self.door_positions[i].item())
+                if self.wall_axis == 1:  # vertical wall => door varies along y
+                    door_coords.extend([self.wall_pos, center_1d])
+                else:  # horizontal wall => door varies along x
+                    door_coords.extend([center_1d, self.wall_pos])
+            else:
+                door_coords.extend([0.0, 0.0])
         return {
             'env_name': self.env_name,
             'proprio': self.agent_position.detach().cpu().numpy(),
             'state': self.agent_position.detach().cpu().numpy(),
             'goal_state': self.target_position.detach().cpu().numpy(),
+            'door_state': np.array(door_coords, dtype=np.float32),
         }
 
     # ---------------- Rendering ----------------

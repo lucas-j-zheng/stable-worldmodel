@@ -65,7 +65,8 @@ def _state_col(present):
 
 
 def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
-                cond_cols_override=None, goal_offset=8, early_frac=0.5):
+                cond_cols_override=None, goal_offset=8, early_frac=0.5,
+                target_col_override=None):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
@@ -166,7 +167,12 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
         cond_cols = override or [c for c in (scol, 'action') if c]
         if not override and 'action' not in cond_cols:
             raise SystemExit(f'dynamics needs action; have {sorted(present)}')
-        target_col, shift = 'latent', True
+        # target defaults to `latent` (needs an encoder); --target-col state lets
+        # the screen run ENCODER-FREE on next-state, e.g. the POMDP contrast
+        # p(next_agent_pos | agent_pos, action) [doors hidden] vs +door_state.
+        target_col, shift = (target_col_override or 'latent'), True
+        if target_col not in present:
+            raise SystemExit(f'dynamics target {target_col!r} absent; have {sorted(present)}')
     elif mode == 'policy':
         if not (override or scol) or 'action' not in present:
             raise SystemExit(f'policy needs state/proprio+action; have {sorted(present)}')
@@ -389,6 +395,9 @@ def main():
                     help='policy_chunk conditioning source (state = encoder-free)')
     ap.add_argument('--cond-cols', nargs='+', default=None,
                     help='explicit conditioning columns (e.g. state goal_state)')
+    ap.add_argument('--target-col', default=None,
+                    help='dynamics target column (default latent; use `state` '
+                         'for the encoder-free next-state POMDP screen)')
     ap.add_argument('--cond-pca', type=int, default=0,
                     help='if >0, PCA-reduce cond to this many dims before k-NN')
     ap.add_argument('--max-frames', type=int, default=200_000)
@@ -418,7 +427,8 @@ def main():
                                cond_from=args.cond_from,
                                cond_cols_override=args.cond_cols,
                                goal_offset=args.goal_offset,
-                               early_frac=args.early_frac)
+                               early_frac=args.early_frac,
+                               target_col_override=args.target_col)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
