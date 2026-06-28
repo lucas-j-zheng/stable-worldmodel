@@ -65,7 +65,7 @@ def _state_col(present):
 
 
 def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
-                cond_cols_override=None, goal_offset=8):
+                cond_cols_override=None, goal_offset=8, early_frac=0.5):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
@@ -86,6 +86,44 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
     """
     present = set(ds.column_names)
     scol = _state_col(present)
+
+    if mode == 'policy_target':
+        # Goal = the episode's FINAL state (the destination), which is the SAME
+        # whichever door the agent took -> does NOT leak the route. So for the
+        # same (state_t, target) a random-door expert has 2 action modes and a
+        # greedy expert has 1. This is the CORRECT dose measurement (policy_goal
+        # leaked the door by conditioning on the realized near-future position).
+        # Restrict to the early `early_frac` of each episode (the room-A decision
+        # phase, where the door choice lives); later travel is unimodal and only
+        # dilutes the signal.
+        if not scol or 'action' not in present:
+            raise SystemExit(f'policy_target needs state+action; have {sorted(present)}')
+        print(f'[mm] mode=policy_target cond=[{scol}_t, {scol}_final] '
+              f'target=action_chunk(H={chunk}) early_frac={early_frac}')
+        ep_order = rng.permutation(len(ds.lengths))
+        conds, targs = [], []
+        n = 0
+        for ep in ep_order:
+            ep = int(ep)
+            T = int(ds.lengths[ep])
+            if T <= chunk + 1:
+                continue
+            data = ds.load_episode(ep)
+            s = np.asarray(data[scol], dtype=np.float32).reshape(T, -1)
+            a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
+            goal = s[-1]                                   # destination
+            t_end = max(1, int((T - chunk) * early_frac))
+            for t in range(0, t_end):
+                conds.append(np.concatenate([s[t], goal]))
+                targs.append(a[t:t + chunk].reshape(-1))
+            n += t_end
+            if n >= max_frames:
+                break
+        cond = np.asarray(conds, dtype=np.float32)
+        tgt = np.asarray(targs, dtype=np.float32)
+        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} '
+              f'(state+target), target_dim={tgt.shape[1]} ({chunk}x action)')
+        return cond, tgt
 
     if mode == 'policy_goal':
         if not scol or 'action' not in present:
@@ -339,11 +377,14 @@ def main():
                     help='run synthetic positive/negative controls (no dataset)')
     ap.add_argument('--tag', default='mm', help='label for the output')
     ap.add_argument('--mode',
-                    choices=['dynamics', 'policy', 'policy_chunk', 'policy_goal'],
+                    choices=['dynamics', 'policy', 'policy_chunk', 'policy_goal',
+                             'policy_target'],
                     default='dynamics')
     ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
     ap.add_argument('--goal-offset', type=int, default=8,
                     help='policy_goal: steps ahead for the synthesized goal state')
+    ap.add_argument('--early-frac', type=float, default=0.5,
+                    help='policy_target: fraction of each episode (from start) to use')
     ap.add_argument('--cond-from', choices=['latent', 'state'], default='latent',
                     help='policy_chunk conditioning source (state = encoder-free)')
     ap.add_argument('--cond-cols', nargs='+', default=None,
@@ -376,7 +417,8 @@ def main():
     cond, target = build_pairs(ds, args.max_frames, args.mode, rng, chunk=args.chunk,
                                cond_from=args.cond_from,
                                cond_cols_override=args.cond_cols,
-                               goal_offset=args.goal_offset)
+                               goal_offset=args.goal_offset,
+                               early_frac=args.early_frac)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
