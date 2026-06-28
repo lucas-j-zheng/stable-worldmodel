@@ -38,7 +38,7 @@ echo "[pomdp] collecting tworoom_pomdp.lance ..."
 python scripts/data/collect_tworooms_pomdp.py \
   cache_dir="$STABLEWM_HOME" num_traj=4000 \
   world.num_envs=10 world.max_episode_steps=100 \
-  action_noise=2.0 out_name=tworoom_pomdp.lance
+  +action_noise=2.0 +out_name=tworoom_pomdp.lance
 
 # 2a. HIDDEN doors = the POMDP the model sees. p(next_agent_pos | agent_pos, a).
 #     Expect residual_bimodal HIGH (pass vs bounce at the wall under hidden doors).
