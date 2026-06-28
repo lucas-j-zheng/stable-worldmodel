@@ -87,6 +87,12 @@ def run(cfg):
         acc.append(a); seen += a.shape[0]
         if seen >= 50000:
             break
+    if not acc:
+        raise SystemExit(
+            f'Empty train loader for "{dataset_name}": no {cfg.wm.history_size}'
+            f'+{cfg.wm.horizon}-step windows. Episodes likely too short for the '
+            'frameskip*num_steps window (e.g. greedy short-path data). Use a '
+            'length-matched dataset or shorter horizon/frameskip.')
     acts = torch.cat(acc, 0)
     mask = ~torch.isnan(acts)
     cnt = mask.sum(0).clamp_min(1)
