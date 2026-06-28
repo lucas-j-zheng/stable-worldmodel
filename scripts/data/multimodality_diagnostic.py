@@ -65,7 +65,7 @@ def _state_col(present):
 
 
 def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
-                cond_cols_override=None):
+                cond_cols_override=None, goal_offset=8):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
@@ -76,10 +76,45 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
                    cond_from='latent' (partial obs the policy sees) or 'state'
                    (ground-truth physical state -- ENCODER-FREE, the cleanest
                    cross-dataset test with no domain-gap confound).
+    policy_goal  : cond = [state_t, state_{t+goal_offset}] (current + SYNTHESIZED
+                   goal, exactly as closed-loop eval forms the goal), target =
+                   action chunk [a_t..a_{t+chunk-1}]. This is the literal dose of
+                   POLICY multimodality the diffusion-vs-MSE comparison hinges on:
+                   for the same (state, goal) did the expert take distinct action
+                   sequences? Encoder-free, fully deconfounded by the goal.
     `state` falls back to the LeRobot `proprio` alias when absent.
     """
     present = set(ds.column_names)
     scol = _state_col(present)
+
+    if mode == 'policy_goal':
+        if not scol or 'action' not in present:
+            raise SystemExit(f'policy_goal needs state+action; have {sorted(present)}')
+        print(f'[mm] mode=policy_goal cond=[{scol}_t, {scol}_t+{goal_offset}] '
+              f'target=action_chunk(H={chunk})')
+        ep_order = rng.permutation(len(ds.lengths))
+        conds, targs = [], []
+        n = 0
+        for ep in ep_order:
+            ep = int(ep)
+            T = int(ds.lengths[ep])
+            if T <= chunk + goal_offset:
+                continue
+            data = ds.load_episode(ep)
+            s = np.asarray(data[scol], dtype=np.float32).reshape(T, -1)
+            a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
+            for t in range(0, T - chunk - goal_offset):
+                conds.append(np.concatenate([s[t], s[t + goal_offset]]))
+                targs.append(a[t:t + chunk].reshape(-1))
+            n += T - chunk - goal_offset
+            if n >= max_frames:
+                break
+        cond = np.asarray(conds, dtype=np.float32)
+        tgt = np.asarray(targs, dtype=np.float32)
+        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} '
+              f'(state+goal), target_dim={tgt.shape[1]} ({chunk}x action)')
+        return cond, tgt
+
     # Explicit conditioning columns (e.g. `state goal_state` = agent+target) let
     # the screen condition on the FULL deterministic structure so the detrend can
     # isolate the residual (e.g. door-choice) multimodality. Without strong
@@ -303,9 +338,12 @@ def main():
     ap.add_argument('--self-test', action='store_true',
                     help='run synthetic positive/negative controls (no dataset)')
     ap.add_argument('--tag', default='mm', help='label for the output')
-    ap.add_argument('--mode', choices=['dynamics', 'policy', 'policy_chunk'],
+    ap.add_argument('--mode',
+                    choices=['dynamics', 'policy', 'policy_chunk', 'policy_goal'],
                     default='dynamics')
     ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
+    ap.add_argument('--goal-offset', type=int, default=8,
+                    help='policy_goal: steps ahead for the synthesized goal state')
     ap.add_argument('--cond-from', choices=['latent', 'state'], default='latent',
                     help='policy_chunk conditioning source (state = encoder-free)')
     ap.add_argument('--cond-cols', nargs='+', default=None,
@@ -337,7 +375,8 @@ def main():
     ds = swm.data.load_dataset(args.dataset)
     cond, target = build_pairs(ds, args.max_frames, args.mode, rng, chunk=args.chunk,
                                cond_from=args.cond_from,
-                               cond_cols_override=args.cond_cols)
+                               cond_cols_override=args.cond_cols,
+                               goal_offset=args.goal_offset)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
