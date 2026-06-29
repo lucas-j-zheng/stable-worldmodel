@@ -35,10 +35,18 @@ class TwoRoomEnv(gym.Env):
         render_mode: str = 'rgb_array',
         render_target: bool = False,
         init_value: dict | None = None,
+        drift_scale: float = 0.0,
     ):
         assert render_mode in self.metadata['render_modes']
         self.render_mode = render_mode
         self.render_target_flag = bool(render_target)
+        # Hidden per-episode drift ("wind") for the POMDP-dynamics experiment.
+        # drift_scale=0 (default) -> no drift, byte-identical to the old env.
+        # When >0, reset() samples a constant per-episode drift in {-d,+d} along x
+        # (hidden from the observation), so p(next | obs, action) is multimodal on
+        # EVERY step. See _get_info's `drift_state` and reset().
+        self.drift_scale = float(drift_scale)
+        self.drift = torch.zeros(2, dtype=torch.float32)
 
         # Precompute coordinate grids once (H,W)
         y = torch.arange(self.IMG_SIZE, dtype=torch.float32)
@@ -233,6 +241,17 @@ class TwoRoomEnv(gym.Env):
         super().reset(seed=seed)
         options = options or {}
 
+        # Sample the hidden per-episode drift. Constant within the episode,
+        # resampled every reset (auto-reset re-seeds each env), unobserved by the
+        # agent -> the source of multimodal dynamics. Bimodal {-d,+d} along x.
+        if self.drift_scale > 0.0:
+            sign = 1.0 if self.np_random.random() < 0.5 else -1.0
+            self.drift = torch.tensor(
+                [sign * self.drift_scale, 0.0], dtype=torch.float32
+            )
+        else:
+            self.drift = torch.zeros(2, dtype=torch.float32)
+
         swm_spaces.reset_variation_space(
             self.variation_space, seed, options, DEFAULT_VARIATIONS
         )
@@ -264,7 +283,9 @@ class TwoRoomEnv(gym.Env):
         action_t = torch.clamp(action_t, -1.0, 1.0)
 
         speed = float(self.variation_space['agent']['speed'].value.item())
-        pos_next = self.agent_position + action_t * speed
+        # Hidden drift is added BEFORE collision handling, so it acts in free
+        # space (the common case) and is clamped only at walls/borders.
+        pos_next = self.agent_position + action_t * speed + self.drift
 
         pos_new = self._apply_collisions(self.agent_position, pos_next)
         self.agent_position = pos_new
@@ -365,6 +386,9 @@ class TwoRoomEnv(gym.Env):
             'state': self.agent_position.detach().cpu().numpy(),
             'goal_state': self.target_position.detach().cpu().numpy(),
             'door_state': np.array(door_coords, dtype=np.float32),
+            # The hidden drift, recorded so the screen can condition on it
+            # (observed) vs not (the POMDP) -- the with/without-drift contrast.
+            'drift_state': self.drift.detach().cpu().numpy(),
         }
 
     # ---------------- Rendering ----------------
