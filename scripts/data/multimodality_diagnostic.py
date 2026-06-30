@@ -135,11 +135,17 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
         return cond, tgt
 
     if mode == 'policy_goal':
-        if not scol or 'action' not in present:
-            raise SystemExit(f'policy_goal needs state+action; have {sorted(present)}')
+        # cond_from='state' (encoder-free, raw +goal_offset state as goal) or
+        # 'latent' (the +goal_offset LATENT the closed-loop policy actually
+        # conditions on -- a lossier goal than the raw state, so it can preserve
+        # route ambiguity the state resolves: this is the conditioning-MATCHED
+        # screen for the diffusion-policy attribution).
+        gcol = 'latent' if cond_from == 'latent' else scol
+        if not gcol or gcol not in present or 'action' not in present:
+            raise SystemExit(f'policy_goal needs {gcol}+action; have {sorted(present)}')
         win_desc = (f' window=[{frac_lo},{frac_hi})'
                     if (frac_lo, frac_hi) != (0.0, 1.0) else '')
-        print(f'[mm] mode=policy_goal cond=[{scol}_t, {scol}_t+{goal_offset}] '
+        print(f'[mm] mode=policy_goal cond=[{gcol}_t, {gcol}_t+{goal_offset}] '
               f'target=action_chunk(H={chunk}){win_desc}')
         ep_order = rng.permutation(len(ds.lengths))
         conds, targs = [], []
@@ -150,7 +156,7 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
             if T <= chunk + goal_offset:
                 continue
             data = ds.load_episode(ep)
-            s = np.asarray(data[scol], dtype=np.float32).reshape(T, -1)
+            s = np.asarray(data[gcol], dtype=np.float32).reshape(T, -1)
             a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
             # Within-episode timestep window: the +goal_offset goal LEAKS the door
             # only once the agent nears it -> bucket by t to test whether the
@@ -168,7 +174,7 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
         cond = np.asarray(conds, dtype=np.float32)
         tgt = np.asarray(targs, dtype=np.float32)
         print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]} '
-              f'(state+goal), target_dim={tgt.shape[1]} ({chunk}x action)')
+              f'({gcol}+goal), target_dim={tgt.shape[1]} ({chunk}x action)')
         return cond, tgt
 
     # Explicit conditioning columns (e.g. `state goal_state` = agent+target) let
