@@ -66,7 +66,7 @@ def _state_col(present):
 
 def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
                 cond_cols_override=None, goal_offset=8, early_frac=0.5,
-                target_col_override=None):
+                target_col_override=None, frac_lo=0.0, frac_hi=1.0):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
@@ -99,8 +99,11 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
         # dilutes the signal.
         if not scol or 'action' not in present:
             raise SystemExit(f'policy_target needs state+action; have {sorted(present)}')
+        windowed = (frac_lo, frac_hi) != (0.0, 1.0)
+        win_desc = (f'window=[{frac_lo},{frac_hi})' if windowed
+                    else f'early_frac={early_frac}')
         print(f'[mm] mode=policy_target cond=[{scol}_t, {scol}_final] '
-              f'target=action_chunk(H={chunk}) early_frac={early_frac}')
+              f'target=action_chunk(H={chunk}) {win_desc}')
         ep_order = rng.permutation(len(ds.lengths))
         conds, targs = [], []
         n = 0
@@ -113,11 +116,16 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
             s = np.asarray(data[scol], dtype=np.float32).reshape(T, -1)
             a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
             goal = s[-1]                                   # destination
-            t_end = max(1, int((T - chunk) * early_frac))
-            for t in range(0, t_end):
+            t_max = T - chunk
+            if windowed:                                   # explicit [lo,hi) window
+                t_lo = int(t_max * frac_lo)
+                t_hi = max(t_lo + 1, int(t_max * frac_hi))
+            else:                                          # back-compat: [0, early_frac)
+                t_lo, t_hi = 0, max(1, int(t_max * early_frac))
+            for t in range(t_lo, t_hi):
                 conds.append(np.concatenate([s[t], goal]))
                 targs.append(a[t:t + chunk].reshape(-1))
-            n += t_end
+            n += t_hi - t_lo
             if n >= max_frames:
                 break
         cond = np.asarray(conds, dtype=np.float32)
@@ -129,8 +137,10 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
     if mode == 'policy_goal':
         if not scol or 'action' not in present:
             raise SystemExit(f'policy_goal needs state+action; have {sorted(present)}')
+        win_desc = (f' window=[{frac_lo},{frac_hi})'
+                    if (frac_lo, frac_hi) != (0.0, 1.0) else '')
         print(f'[mm] mode=policy_goal cond=[{scol}_t, {scol}_t+{goal_offset}] '
-              f'target=action_chunk(H={chunk})')
+              f'target=action_chunk(H={chunk}){win_desc}')
         ep_order = rng.permutation(len(ds.lengths))
         conds, targs = [], []
         n = 0
@@ -142,10 +152,17 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
             data = ds.load_episode(ep)
             s = np.asarray(data[scol], dtype=np.float32).reshape(T, -1)
             a = np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
-            for t in range(0, T - chunk - goal_offset):
+            # Within-episode timestep window: the +goal_offset goal LEAKS the door
+            # only once the agent nears it -> bucket by t to test whether the
+            # multimodality the policy faces lives EARLY (goal still far, route
+            # uncommitted) and is washed out by the late, route-resolved steps.
+            t_max = T - chunk - goal_offset
+            t_lo = int(t_max * frac_lo)
+            t_hi = max(t_lo + 1, int(t_max * frac_hi))
+            for t in range(t_lo, t_hi):
                 conds.append(np.concatenate([s[t], s[t + goal_offset]]))
                 targs.append(a[t:t + chunk].reshape(-1))
-            n += T - chunk - goal_offset
+            n += t_hi - t_lo
             if n >= max_frames:
                 break
         cond = np.asarray(conds, dtype=np.float32)
@@ -391,6 +408,12 @@ def main():
                     help='policy_goal: steps ahead for the synthesized goal state')
     ap.add_argument('--early-frac', type=float, default=0.5,
                     help='policy_target: fraction of each episode (from start) to use')
+    ap.add_argument('--frac-lo', type=float, default=0.0,
+                    help='policy_goal/_target: within-episode timestep window start '
+                         '(fraction). Non-default [lo,hi) overrides --early-frac and '
+                         'buckets the screen by timestep to test early-vs-late mm.')
+    ap.add_argument('--frac-hi', type=float, default=1.0,
+                    help='policy_goal/_target: within-episode timestep window end (fraction)')
     ap.add_argument('--cond-from', choices=['latent', 'state'], default='latent',
                     help='policy_chunk conditioning source (state = encoder-free)')
     ap.add_argument('--cond-cols', nargs='+', default=None,
@@ -428,7 +451,8 @@ def main():
                                cond_cols_override=args.cond_cols,
                                goal_offset=args.goal_offset,
                                early_frac=args.early_frac,
-                               target_col_override=args.target_col)
+                               target_col_override=args.target_col,
+                               frac_lo=args.frac_lo, frac_hi=args.frac_hi)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
@@ -440,6 +464,8 @@ def main():
     result = {'tag': args.tag, 'dataset': args.dataset, 'mode': args.mode,
               'n_pairs': int(cond.shape[0]), 'cond_dim_raw': cond_dim_raw,
               'cond_dim_used': int(cond.shape[1]), 'chunk': args.chunk,
+              'goal_offset': args.goal_offset, 'frac_lo': args.frac_lo,
+              'frac_hi': args.frac_hi,
               'target_dim': int(target.shape[1]), 'k': min(args.k, cond.shape[0]),
               **stats}
     print('[mm] RESULT', json.dumps(result, indent=2))
