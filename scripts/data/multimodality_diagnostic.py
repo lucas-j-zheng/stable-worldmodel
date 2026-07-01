@@ -48,6 +48,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import BallTree
 
 # stable_worldmodel is imported lazily inside the dataset path so --self-test
@@ -67,7 +68,7 @@ def _state_col(present):
 def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
                 cond_cols_override=None, goal_offset=8, early_frac=0.5,
                 target_col_override=None, frac_lo=0.0, frac_hi=1.0,
-                horizon=1, coarse_action='full'):
+                horizon=1, coarse_action='full', stride=1):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
@@ -196,8 +197,18 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
         #       deterministic -> expect residual_bimodal_frac LOW (the control).
         #   coarse_action='sum'  : cond += Sigma a_{t:t+K} (net displacement) -- a
         #       LOSSY coarse action; drops the route information. (mean is identical
-        #       under the local-linear detrend -- scale only -- so it is not offered.)
-        #   coarse_action='none' : cond = base_t only -- upper bound on branching.
+        #       under the local-linear detrend -- scale only, and cond is
+        #       standardized before the k-NN -- so it is not offered.)
+        #   coarse_action='sumhalf': cond += Sigma a_{t:t+K/2} -- first-half net
+        #       displacement only; coarser than sum in TIME (review B3: in a
+        #       near-integrator env full-window Sigma-a is ~sufficient for the
+        #       endpoint, so the branching may only appear once the tail of the
+        #       window is dropped).
+        #   coarse_action='dir'  : cond += unit(Sigma a) -- direction of net
+        #       displacement, magnitude dropped; coarser than sum in SPACE.
+        #   coarse_action='none' : cond = base_t only -- upper bound on branching
+        #       AND the planning-relevant cell for an action-free subgoal
+        #       proposer p(z_{t+K}|z_t) (review B5).
         # Multimodality that APPEARS as the conditioning coarsens is CONTROLLABLE
         # reachability (the level-2 planner picks the mode), not aleatoric noise --
         # that is the diffusion edge a temporally-abstracted dynamics model exploits.
@@ -216,7 +227,8 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
         target_col = target_col_override or 'latent'
         if target_col not in present:
             raise SystemExit(f'dynamics_k target {target_col!r} absent; have {sorted(present)}')
-        print(f'[mm] mode=dynamics_k K={K} coarse={coarse_action} '
+        stride = max(1, int(stride))
+        print(f'[mm] mode=dynamics_k K={K} coarse={coarse_action} stride={stride} '
               f'cond=[{base_cols}(+a)] target={target_col}_(t+{K})')
         ep_order = rng.permutation(len(ds.lengths))
         conds, targs = [], []
@@ -233,16 +245,24 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
             tgt = np.asarray(data[target_col], dtype=np.float32).reshape(T, -1)
             a = (np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
                  if need_action else None)
-            for t in range(0, T - K):
+            for t in range(0, T - K, stride):
                 if coarse_action == 'full':
                     ca = a[t:t + K].reshape(-1)
                     conds.append(np.concatenate([base[t], ca]))
                 elif coarse_action == 'sum':
                     conds.append(np.concatenate([base[t], a[t:t + K].sum(0)]))
+                elif coarse_action == 'sumhalf':
+                    conds.append(np.concatenate(
+                        [base[t], a[t:t + max(1, K // 2)].sum(0)]))
+                elif coarse_action == 'dir':
+                    net = a[t:t + K].sum(0)
+                    nrm = float(np.linalg.norm(net))
+                    conds.append(np.concatenate(
+                        [base[t], net / nrm if nrm > 1e-8 else net]))
                 else:                                        # 'none'
                     conds.append(base[t])
                 targs.append(tgt[t + K])
-            n += T - K
+                n += 1
             if n >= max_frames:
                 break
         cond = np.asarray(conds, dtype=np.float32)
@@ -369,6 +389,42 @@ def top_pc_projection(mat):
         return c[:, 0]
 
 
+def gmm2_stats(x):
+    """1-D residual projection -> (prefers_2, gap_ratio, separation).
+
+    prefers_2 : BIC(k=2) < BIC(k=1). Complements Sarle BC: BC only has power on
+        HARD separated modes (its documented blind spot is soft/overlapping ones
+        -- the 06-30 policy puzzle); BIC keeps power on soft mixtures.
+    gap_ratio : mixture pdf at 0 / pdf at the taller component mean, under the
+        k=2 fit. The residual projection is centered, so 0 IS the local
+        conditional mean = the MSE model's prediction point. Small gap_ratio =>
+        the MSE prediction sits in a density gap between modes -- the
+        infeasible-average-subgoal mechanism, measured directly (review C1).
+    separation: |mu1 - mu2| / mean sigma (mode separation in sigma units).
+    """
+    x = np.asarray(x, dtype=np.float64).reshape(-1, 1)
+    if x.shape[0] < 16 or float(np.std(x)) < 1e-12:
+        return False, 1.0, 0.0
+    try:
+        g1 = GaussianMixture(1, random_state=0).fit(x)
+        g2 = GaussianMixture(2, random_state=0, n_init=2).fit(x)
+    except Exception:
+        return False, 1.0, 0.0
+    prefers2 = bool(g2.bic(x) < g1.bic(x))
+    mu = g2.means_.ravel()
+    sd = np.sqrt(g2.covariances_.ravel()) + 1e-12
+    w = g2.weights_.ravel()
+
+    def pdf(pt):
+        return float(np.sum(w * np.exp(-0.5 * ((pt - mu) / sd) ** 2)
+                            / (sd * np.sqrt(2 * np.pi))))
+
+    peak = max(pdf(mu[0]), pdf(mu[1]))
+    gap_ratio = pdf(0.0) / peak if peak > 0 else 1.0
+    separation = float(abs(mu[0] - mu[1]) / sd.mean())
+    return prefers2, float(gap_ratio), separation
+
+
 def analyze(cond, target, n_anchors, k, rng):
     """k-NN-in-cond + local-linear detrend stats for P(target | cond).
 
@@ -402,6 +458,7 @@ def analyze(cond, target, n_anchors, k, rng):
     dist, nbr = tree.query(condn[anchors], k=k)
 
     cond_stds, bc_vals, res_stds, res_bc_vals, det_r2 = [], [], [], [], []
+    gmm_pref2, gmm_gaps, gmm_seps = [], [], []
     for a, row in zip(anchors, nbr):
         tloc = target[row]                                # (k, D)
         cond_stds.append(np.sqrt(tloc.var(0).mean()))
@@ -414,12 +471,26 @@ def analyze(cond, target, n_anchors, k, rng):
         res_stds.append(np.sqrt(resid.var(0).mean()))
         tot = tloc.var(0).mean()
         det_r2.append(1.0 - resid.var(0).mean() / tot if tot > 0 else 0.0)
-        res_bc_vals.append(bimodality_coefficient(top_pc_projection(resid)))
+        proj = top_pc_projection(resid)
+        res_bc_vals.append(bimodality_coefficient(proj))
+        p2, gap, sep = gmm2_stats(proj)
+        gmm_pref2.append(p2)
+        if p2:                     # gap/separation only meaningful under 2 modes
+            gmm_gaps.append(gap)
+            gmm_seps.append(sep)
 
     cond_std = float(np.mean(cond_stds))
     res_std = float(np.mean(res_stds))
     bc_vals, res_bc_vals = np.asarray(bc_vals), np.asarray(res_bc_vals)
+    gmm_extra = {
+        'residual_gmm2_fraction': round(float(np.mean(gmm_pref2)), 4),
+        'gmm2_mean_gap_ratio_median':
+            round(float(np.median(gmm_gaps)), 4) if gmm_gaps else 1.0,
+        'gmm2_mode_separation_median':
+            round(float(np.median(gmm_seps)), 4) if gmm_seps else 0.0,
+    }
     return {
+        **gmm_extra,
         'marginal_std': round(marginal_std, 5),
         'conditional_std': round(cond_std, 5),
         'ratio_cond_over_marginal': round(cond_std / marginal_std if marginal_std else 0, 4),
@@ -476,10 +547,15 @@ def main():
                     default='dynamics')
     ap.add_argument('--horizon', type=int, default=1,
                     help='dynamics_k: K-step lookahead for the target (t+K)')
-    ap.add_argument('--coarse-action', choices=['full', 'sum', 'none'],
+    ap.add_argument('--coarse-action',
+                    choices=['full', 'sum', 'sumhalf', 'dir', 'none'],
                     default='full', dest='coarse_action',
                     help='dynamics_k: how much of a_{t:t+K} to keep in the '
-                         'conditioning (full=all K, sum=net displacement, none=drop)')
+                         'conditioning (full=all K, sum=net displacement, '
+                         'sumhalf=first-half sum, dir=unit direction, none=drop)')
+    ap.add_argument('--stride', type=int, default=1,
+                    help='dynamics_k: window stride (stride=K -> non-overlapping '
+                         'windows, the decorrelated robustness check)')
     ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
     ap.add_argument('--goal-offset', type=int, default=8,
                     help='policy_goal: steps ahead for the synthesized goal state')
@@ -511,12 +587,16 @@ def main():
 
     if args.self_test:
         cond, variants = synthetic_control(rng)
-        print('[mm] SELF-TEST (expect: unimodal residual_bimodal~0, bi/tri HIGH)')
+        print('[mm] SELF-TEST (expect: unimodal residual_bimodal~0, bi/tri HIGH; '
+              'gmm2_frac same pattern; unimodal gap_ratio ~1, bimodal ~0)')
         for name, tgt in variants.items():
             s = analyze(cond, tgt, args.n_anchors, args.k, rng)
             print(f'  {name:9s}: det_R2={s["det_r2_mean"]:.3f}  '
                   f'residual_bimodal_frac={s["residual_bimodality_fraction"]:.3f}  '
-                  f'residual_bc_median={s["residual_bimodality_coeff_median"]:.3f}')
+                  f'residual_bc_median={s["residual_bimodality_coeff_median"]:.3f}  '
+                  f'gmm2_frac={s["residual_gmm2_fraction"]:.3f}  '
+                  f'gap_ratio={s["gmm2_mean_gap_ratio_median"]:.3f}  '
+                  f'sep={s["gmm2_mode_separation_median"]:.2f}')
         return
 
     if not args.dataset:
@@ -530,7 +610,8 @@ def main():
                                early_frac=args.early_frac,
                                target_col_override=args.target_col,
                                frac_lo=args.frac_lo, frac_hi=args.frac_hi,
-                               horizon=args.horizon, coarse_action=args.coarse_action)
+                               horizon=args.horizon, coarse_action=args.coarse_action,
+                               stride=args.stride)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
@@ -544,7 +625,7 @@ def main():
               'cond_dim_used': int(cond.shape[1]), 'chunk': args.chunk,
               'goal_offset': args.goal_offset, 'frac_lo': args.frac_lo,
               'frac_hi': args.frac_hi, 'horizon': args.horizon,
-              'coarse_action': args.coarse_action,
+              'coarse_action': args.coarse_action, 'stride': args.stride,
               'target_dim': int(target.shape[1]), 'k': min(args.k, cond.shape[0]),
               **stats}
     print('[mm] RESULT', json.dumps(result, indent=2))
