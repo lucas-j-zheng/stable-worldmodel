@@ -56,7 +56,7 @@ run_one () {  # $1=kind(dp|tmse) $2=seed
   done
 }
 
-for s in 1 2 3; do
+for s in ${SEEDS:-1 2 3}; do
   run_one dp   $s
   run_one tmse $s
 done

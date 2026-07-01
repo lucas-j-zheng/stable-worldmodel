@@ -15,15 +15,10 @@
 (strong) or "empirical, mechanism open" (weak). All items reuse existing
 checkpoints/data; no retraining except the seeded reruns.*
 
-- [ ] **Failure-mode probe (nearly free, do first).** Roll out DP + TMSE at
-      door_prob 0.5 and log agent positions on FAILED episodes. The training-time-
-      smoothing hypothesis makes a spatial prediction: TMSE failures cluster at the
-      wall BETWEEN the doors; DP failures don't.
-      → *2026-07-01: position logging built (`world.py` `_evaluate_from_dataset`
-      captures per-step proprio; `eval_wm.py` dumps `positions_off{K}_seed{S}.npz`
-      next to the checkpoint). Data is being produced by the seeded rerun jobs
-      below — analyze the npz's once they land (plot failure endpoints vs door /
-      wall geometry, DP vs TMSE at mm05).*
+- [x] **Failure-mode probe.** DONE 2026-07-01 (`failure_positions.py` on the
+      seeded-cell npz's): **NO mode-averaging signature** — TMSE failures at the
+      wall-between-doors 10–14% ≈ DP 9–11%; both mostly fail "elsewhere"
+      (~50 px short of goal). Candidate (a) unsupported behaviorally.
 - [ ] **Smoothing test (candidate a).** Compare TMSE per-sample train/val MSE on
       mm0 vs p10 (length-matched by construction). Substantially higher irreducible
       fit error on mm0 ⇒ the corruption happens at TRAINING time: the network can't
@@ -38,11 +33,12 @@ checkpoints/data; no retraining except the seeded reruns.*
 - [ ] **Seeded endpoint reruns.** DP + TMSE at door_prob {0.5, 1.0}, REAL fixed
       seeds (audit flag: prior "3-seed" runs were `seed: None`), n=100. 4 jobs.
       Converts the +10 from "probably" (±~5/cell at n=50) to defensible.
-      → *2026-07-01: RUNNING — `train_diffusion_policy.py` now calls
-      `seed_everything`; `p0a_seeded_cell.sbatch` trains 3 seeds × {dp,tmse}
-      per cell (`_ps{seed}` checkpoint names, old unseeded ones kept) and evals
-      each at eval seeds {42,123} n=50 (= n=100/cell, episode-sampling noise
-      included). Jobs 3611839 (mm05) / 3611840 (p10).*
+      → *2026-07-01: mm05 LANDED (3611839) — **THE +10 DOES NOT REPLICATE:
+      DP 35.7 vs TMSE 36.0** (3 seeds × n=100); TMSE cross-run sd ~10. Extension
+      to seeds 4–8 running (3611999) for power; p10 cell (3611840) still queued.
+      See `experiments/2026-07-01_p0a_mechanism_loop.md` iteration 2 — if the
+      null holds at 8 seeds + p10, the policy-side objective effect is DEAD and
+      the loop moves to P1.*
 - [ ] **Done =** wall-clustering + higher mm0 fit error ⇒ claim training-time
       mode-averaging as the mechanism; otherwise write "empirical, mechanism open"
       and do NOT over-claim. Either way update PROGRESS_ONEPAGER.md.
