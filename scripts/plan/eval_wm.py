@@ -230,8 +230,25 @@ def run(cfg: DictConfig):
         )
     end_time = time.time()
 
+    traj = metrics.pop('proprio_trajectories', None)
+    goal_proprio = metrics.pop('goal_proprio', None)
+
     print(metrics)
     print(f'[eval] videos saved to {results_path.resolve()}')
+
+    if traj is not None:
+        pos_path = results_path / (
+            f'positions_off{cfg.eval.goal_offset_steps}_seed{cfg.seed}.npz'
+        )
+        np.savez(
+            pos_path,
+            trajectories=traj,
+            goal_proprio=(
+                goal_proprio if goal_proprio is not None else np.array([])
+            ),
+            successes=np.asarray(metrics['episode_successes']),
+        )
+        print(f'[eval] positions saved to {pos_path.resolve()}')
 
     results_path = results_path / cfg.output.filename
     results_path.parent.mkdir(parents=True, exist_ok=True)

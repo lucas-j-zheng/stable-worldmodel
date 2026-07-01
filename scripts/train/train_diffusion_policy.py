@@ -60,6 +60,11 @@ def policy_forward(self, batch, stage, cfg):
 
 @hydra.main(version_base=None, config_path='./config', config_name='diffusion_policy')
 def run(cfg):
+    # Full run seeding (weights init, dataloader shuffling, dropout) — cfg.seed
+    # alone only seeded the train/val split, so earlier "3-seed" runs were
+    # actually unseeded (audit 2026-06-29).
+    pl.seed_everything(cfg.seed, workers=True)
+
     dataset_cfg = OmegaConf.to_container(cfg.data.dataset, resolve=True)
     dataset_name = dataset_cfg.pop('name')
     cache_dir = os.environ.get('LOCAL_DATASET_DIR', None)

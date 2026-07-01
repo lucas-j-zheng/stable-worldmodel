@@ -537,10 +537,14 @@ class World:
             'seeds': init_state.get('seed'),
         }
         frames: dict[int, list] = defaultdict(list) if video else None
+        proprio_steps: list = []
 
         def on_step(world):
             world.infos.update(deepcopy(goal_snapshot))
             results['episode_successes'] |= world.terminateds
+            if 'proprio' in world.infos:
+                p = np.asarray(world.infos['proprio'])
+                proprio_steps.append((p[:, -1] if p.ndim > 2 else p).copy())
             if frames is not None:
                 for i in range(world.num_envs):
                     f = world.infos['pixels'][i]
@@ -548,6 +552,13 @@ class World:
                     frames[i].append(np.asarray(frame).copy())
 
         self._run(max_steps=eval_budget, mode=mode, on_step=on_step)
+
+        if proprio_steps:
+            # (num_envs, T, proprio_dim) — per-step agent positions, for
+            # failure-mode analysis (where do unsuccessful episodes end up).
+            results['proprio_trajectories'] = np.stack(proprio_steps, axis=1)
+            if 'goal_proprio' in goal_state:
+                results['goal_proprio'] = np.asarray(goal_state['goal_proprio'])
 
         results['success_rate'] = (
             float(results['episode_successes'].sum()) / n * 100.0
