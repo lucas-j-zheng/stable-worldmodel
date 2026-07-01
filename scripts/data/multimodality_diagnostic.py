@@ -66,7 +66,8 @@ def _state_col(present):
 
 def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
                 cond_cols_override=None, goal_offset=8, early_frac=0.5,
-                target_col_override=None, frac_lo=0.0, frac_hi=1.0):
+                target_col_override=None, frac_lo=0.0, frac_hi=1.0,
+                horizon=1, coarse_action='full'):
     """Collect within-episode (cond_t, target_t) pairs up to ~max_frames.
 
     dynamics     : cond = [state, action]_t,  target = latent_{t+1}.
@@ -186,6 +187,70 @@ def build_pairs(ds, max_frames, mode, rng, chunk=8, cond_from='latent',
         miss = [c for c in override if c not in present]
         if miss:
             raise SystemExit(f'--cond-cols {miss} absent; have {sorted(present)}')
+    if mode == 'dynamics_k':
+        # K-STEP reachable-set screen (the H-JEPA level-2 dynamics bet). Measures
+        # p(target_{t+K} | base_t, coarse_a): does the K-step-ahead conditional
+        # BRANCH once the fine action sequence a_{t:t+K} is (partly) marginalized?
+        #   coarse_action='full' : cond += concat(a_t..a_{t+K-1})  -- keeps all fine
+        #       control. Composing K near-deterministic 1-step maps stays
+        #       deterministic -> expect residual_bimodal_frac LOW (the control).
+        #   coarse_action='sum'  : cond += Sigma a_{t:t+K} (net displacement) -- a
+        #       LOSSY coarse action; drops the route information. (mean is identical
+        #       under the local-linear detrend -- scale only -- so it is not offered.)
+        #   coarse_action='none' : cond = base_t only -- upper bound on branching.
+        # Multimodality that APPEARS as the conditioning coarsens is CONTROLLABLE
+        # reachability (the level-2 planner picks the mode), not aleatoric noise --
+        # that is the diffusion edge a temporally-abstracted dynamics model exploits.
+        # Read residual_bimodal_frac (HARD separated route modes -> Sarle BC has
+        # power here, unlike the soft policy case). Runs ENCODER-FREE with
+        # --target-col state (p(next_pos | pos, coarse_a)); the cheapest pre-build
+        # gate, mirroring the POMDP screen.
+        K = max(1, int(horizon))
+        base_cols = override or [c for c in (scol,) if c]
+        if not base_cols:
+            raise SystemExit(f'dynamics_k needs a state/base col; have {sorted(present)}')
+        need_action = coarse_action != 'none'
+        if need_action and 'action' not in present:
+            raise SystemExit(f'dynamics_k coarse={coarse_action} needs action; '
+                             f'have {sorted(present)}')
+        target_col = target_col_override or 'latent'
+        if target_col not in present:
+            raise SystemExit(f'dynamics_k target {target_col!r} absent; have {sorted(present)}')
+        print(f'[mm] mode=dynamics_k K={K} coarse={coarse_action} '
+              f'cond=[{base_cols}(+a)] target={target_col}_(t+{K})')
+        ep_order = rng.permutation(len(ds.lengths))
+        conds, targs = [], []
+        n = 0
+        for ep in ep_order:
+            ep = int(ep)
+            T = int(ds.lengths[ep])
+            if T <= K:
+                continue
+            data = ds.load_episode(ep)
+            base = np.concatenate(
+                [np.asarray(data[c], dtype=np.float32).reshape(T, -1)
+                 for c in base_cols], axis=1)               # (T, B)
+            tgt = np.asarray(data[target_col], dtype=np.float32).reshape(T, -1)
+            a = (np.asarray(data['action'], dtype=np.float32).reshape(T, -1)
+                 if need_action else None)
+            for t in range(0, T - K):
+                if coarse_action == 'full':
+                    ca = a[t:t + K].reshape(-1)
+                    conds.append(np.concatenate([base[t], ca]))
+                elif coarse_action == 'sum':
+                    conds.append(np.concatenate([base[t], a[t:t + K].sum(0)]))
+                else:                                        # 'none'
+                    conds.append(base[t])
+                targs.append(tgt[t + K])
+            n += T - K
+            if n >= max_frames:
+                break
+        cond = np.asarray(conds, dtype=np.float32)
+        tgt = np.asarray(targs, dtype=np.float32)
+        print(f'[mm] {cond.shape[0]} pairs, cond_dim={cond.shape[1]}, '
+              f'target_dim={tgt.shape[1]}')
+        return cond, tgt
+
     if mode == 'dynamics':
         cond_cols = override or [c for c in (scol, 'action') if c]
         if not override and 'action' not in cond_cols:
@@ -406,9 +471,15 @@ def main():
                     help='run synthetic positive/negative controls (no dataset)')
     ap.add_argument('--tag', default='mm', help='label for the output')
     ap.add_argument('--mode',
-                    choices=['dynamics', 'policy', 'policy_chunk', 'policy_goal',
-                             'policy_target'],
+                    choices=['dynamics', 'dynamics_k', 'policy', 'policy_chunk',
+                             'policy_goal', 'policy_target'],
                     default='dynamics')
+    ap.add_argument('--horizon', type=int, default=1,
+                    help='dynamics_k: K-step lookahead for the target (t+K)')
+    ap.add_argument('--coarse-action', choices=['full', 'sum', 'none'],
+                    default='full', dest='coarse_action',
+                    help='dynamics_k: how much of a_{t:t+K} to keep in the '
+                         'conditioning (full=all K, sum=net displacement, none=drop)')
     ap.add_argument('--chunk', type=int, default=8, help='action-chunk H (policy_chunk)')
     ap.add_argument('--goal-offset', type=int, default=8,
                     help='policy_goal: steps ahead for the synthesized goal state')
@@ -458,7 +529,8 @@ def main():
                                goal_offset=args.goal_offset,
                                early_frac=args.early_frac,
                                target_col_override=args.target_col,
-                               frac_lo=args.frac_lo, frac_hi=args.frac_hi)
+                               frac_lo=args.frac_lo, frac_hi=args.frac_hi,
+                               horizon=args.horizon, coarse_action=args.coarse_action)
 
     cond_dim_raw = int(cond.shape[1])
     # Auto-PCA high-dim conditioning (e.g. the 192-d latent) to keep k-NN local.
@@ -471,7 +543,8 @@ def main():
               'n_pairs': int(cond.shape[0]), 'cond_dim_raw': cond_dim_raw,
               'cond_dim_used': int(cond.shape[1]), 'chunk': args.chunk,
               'goal_offset': args.goal_offset, 'frac_lo': args.frac_lo,
-              'frac_hi': args.frac_hi,
+              'frac_hi': args.frac_hi, 'horizon': args.horizon,
+              'coarse_action': args.coarse_action,
               'target_dim': int(target.shape[1]), 'k': min(args.k, cond.shape[0]),
               **stats}
     print('[mm] RESULT', json.dumps(result, indent=2))
