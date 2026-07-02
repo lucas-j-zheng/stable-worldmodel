@@ -265,3 +265,24 @@ nonparametric sampler (−0.31), but parametric heads degrade at 192-d and the
 25-epoch small DDPM fails outright (loss still falling; samples never within
 2δ). Missing: p10_latent control (gpu-debug 1h timeout). → E16 rerun with
 hidden 512 / 75 epochs / gpu partition (job pending).
+
+### R20 — E16 tuned latent bench (job 3614601): LATENT DOSE CONTRAST CONFIRMED
+
+hidden 512 / 75 epochs:
+
+| head | mm0_latent prec | p10_latent prec |
+|---|---|---|
+| mse | 0.568 | **0.924** |
+| gauss | 0.459 | 0.717 |
+| mdn | **0.850** | 0.746 |
+| knn | 0.838 | 0.836 |
+| diff | 0.065 | 0.088 |
+
+Pre-registered: (1) ✓ p10 parity — in fact MSE is the BEST parametric head on
+unimodal latent data; deficit −0.28 on mm0 vs +0.09 on p10 (Δ≈0.37). (2) ✓
+MDN rehabilitates with capacity (0.616→0.850). DDPM stays broken at 192-d ⇒
+per pre-registration, latent generative representatives are MDN/kNN.
+**New symmetric finding:** MDN pays on unimodal latent data (0.746 vs MSE
+0.924) — the wrong-head cost runs BOTH directions; the screen is a
+head-SELECTION tool. kNN is safe in both regimes (0.838/0.836).
+RUNG 5 IS A GO: kNN + MDN proposers in the frozen LeWM latent space.
