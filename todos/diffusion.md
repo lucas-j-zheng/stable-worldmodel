@@ -29,15 +29,13 @@ checkpoints/data; no retraining except the seeded reruns.*
       them (`diffusion_policy_solver.py:64`), not demo latents. If the eval-time
       conditional is more ambiguous than the demo-latent screen showed, mismatch is
       live; if still ~0.006, rule it out.
-- [ ] **Seeded endpoint reruns.** DP + TMSE at door_prob {0.5, 1.0}, REAL fixed
-      seeds (audit flag: prior "3-seed" runs were `seed: None`), n=100. 4 jobs.
-      Converts the +10 from "probably" (±~5/cell at n=50) to defensible.
-      → *2026-07-01: mm05 LANDED (3611839) — **THE +10 DOES NOT REPLICATE:
-      DP 35.7 vs TMSE 36.0** (3 seeds × n=100); TMSE cross-run sd ~10. Extension
-      to seeds 4–8 running (3611999) for power; p10 cell (3611840) still queued.
-      See `experiments/2026-07-01_p0a_mechanism_loop.md` iteration 2 — if the
-      null holds at 8 seeds + p10, the policy-side objective effect is DEAD and
-      the loop moves to P1.*
+- [x] **Seeded endpoint reruns.** **CLOSED 2026-07-01 — P0a FINAL: at mm05 with
+      8 real seeds × n=100, DP 34.9 vs TMSE 33.5 (+1.4 ± ~2.9) — NO objective
+      effect. The +10 was noise on an sd~7 baseline under a variance-hiding
+      eval.** Secondary keeper: diffusion HALVES cross-seed variance (3.6 vs
+      7.3). p10 8-seed symmetry check pending (3612576). Full chain of evidence:
+      `experiments/2026-07-01_p0a_mechanism_loop.md` iterations 2–6.
+      **The policy half of the thesis closes as an honest negative on TwoRoom.**
 - [ ] **Done =** wall-clustering + higher mm0 fit error ⇒ claim training-time
       mode-averaging as the mechanism; otherwise write "empirical, mechanism open"
       and do NOT over-claim. Either way update PROGRESS_ONEPAGER.md.

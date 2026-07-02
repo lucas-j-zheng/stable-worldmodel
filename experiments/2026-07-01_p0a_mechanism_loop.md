@@ -253,3 +253,36 @@ banked +10 was noise on a high-variance baseline measured with a
 variance-hiding eval design. Final call when seeds 4–8 land — then P0/P0a close
 and the program's weight moves to P1 (slip + K-step routes, both now gated
 open/1 screening).
+
+---
+
+## Iteration 6 — 2026-07-01 ~22:40: P0a FINAL VERDICT (mm05, 8 seeds × n=100)
+
+| model | s1 | s2 | s3 | s4 | s5 | s6 | s7 | s8 | mean | cross-seed sd |
+|---|---|---|---|---|---|---|---|---|---|---|
+| DiffusionPolicy | 38 | 35 | 34 | 35 | 40 | 36 | 33 | 28 | **34.9** | **3.6** |
+| TransformerMSE | 44 | 40 | 24 | 29 | 27 | 29 | 40 | 35 | **33.5** | **7.3** |
+
+**VERDICT: DP−TMSE = +1.4 ± ~2.9 at the multimodal endpoint — the diffusion
+objective effect on mean success is ZERO.** (8 real seeds, 2 eval seeds × n=50
+each, architecture-matched.) The banked "+10 multimodality×objective
+interaction" was sampling noise: 3 unseeded TMSE runs that landed low, read
+through a fixed-eval-seed design that hid both variance terms. Chain of
+evidence: seeded tie (iter 2) → no wall-clustering (iter 2) → inverted p10
+"dose" (iter 4) → fit-error real but behaviorally inert (iter 4) → 8-seed null
+(this). **The policy half of the thesis, as operationalized on TwoRoom, closes
+as an honest negative.**
+
+**Genuine secondary finding worth keeping: the diffusion objective HALVES
+cross-training-run variance (sd 3.6 vs 7.3, same backbone, same data).**
+Diffusion as a *stabilizer*, not a mean-improver, on weak/ambiguous-multimodal
+data — consistent with the fit-error picture (the MSE loss surface on
+heterogeneous targets is nastier run-to-run). If p10's 8-seed cell reproduces
+the variance ratio, this is a defensible, novel-ish observation for the writeup.
+
+**Program state after this verdict:**
+- P0 (door-count dose axis) is MOOT — there is no policy-side effect to dose.
+  Mark dead pending only the p10 8-seed symmetry check (3612576, queued).
+- The program's live thesis bet is now entirely on the DYNAMICS side:
+  the slip chain (3613072→…→3613076/77) and the K-step/H-JEPA route.
+- PROGRESS_ONEPAGER rewrite queued for when p10 lands (both endpoints final).
