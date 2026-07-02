@@ -97,3 +97,14 @@ K-scale route structure even with multi-human demos** (consistent with the
 ~0.55 even under FULL conditioning with det_R² 0.2–0.3 — encoder/domain-gap
 artifact on human data, not dynamics; noted, not chased.) **PushT is out as
 the second domain; maze family is the fallback if TwoRoom survives E6.**
+
+### R5 — empirical T and the K/T law (derived from pair counts)
+
+Uncapped pair counts give T ≈ 25–26 (not the design doc's assumed 40), N_ep ≈
+5.5k (mm0) / 8.8k (dp05). Law prediction at K=8: 0.5·K/T ≈ **0.155** — the
+observed sum-cell bimodal_frac is 0.155 (mm0) / 0.135 (dp05). BUT read
+skeptically: p10's sum cell reads 0.124 where the law (p_choice=0) predicts ~0,
+so ~0.12 of the sum-cell fraction is dose-independent background (tiny-residual
+noise + non-door structure) and only the **dose-differenced increment ~0.03**
+is door-attributable. The numerical match is partly coincidence. The law gets
+its fair test in E6 (goal-conditioned), where the background should drop out.

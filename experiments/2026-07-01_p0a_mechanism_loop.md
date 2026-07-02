@@ -173,6 +173,17 @@ hjepa-dose-latent / hjepa-pusht-kstep jobs ran tonight); this loop feeds it.
   rises with S while observed stays ~0.
 - mm05 seeds 4–8 extension (3611999) still running.
 
+**Addendum (~21:15) — two more launches:**
+- **3612576** — p10 seeds 4–8 extension: the +5-at-unimodal anomaly gets the
+  same 8-seed power as mm05; both endpoints then support a clean final verdict.
+- **3612577** — slip latent caching + LATENT-space dynamics screen, chained
+  `--dependency=afterok:3612481` with an IN-JOB gate (aborts unless slip8
+  hidden bimodal > 0.3, preserving the screen-before-train rule). Key shortcut
+  identified: slip changes dynamics only, not appearance, and uses default
+  1-door geometry → the existing `lewm_tworoom` encoder is in-distribution —
+  **no encoder retrain needed for Route 1.** If both screens pass, the next
+  stage is diffusion-vs-deterministic dynamics training on slip latents.
+
 **P0a verdict taking shape:** no reliable policy-side objective effect; the
 banked +10 was noise on a high-variance baseline measured with a
 variance-hiding eval design. Final call when seeds 4–8 land — then P0/P0a close
