@@ -205,6 +205,17 @@ hjepa-dose-latent / hjepa-pusht-kstep jobs ran tonight); this loop feeds it.
   retrain. NEXT after these: closed-loop D-MPC eval (diff vs det) on the slip env
   — the actual dynamics-half verdict.
 
+**Addendum 3 (~22:10) — Route 1 chain closed end-to-end:**
+Built `tworoom_slip_diffusion.yaml` + `slip_dmpc_eval.sbatch` and chained the
+closed-loop verdict evals: **3612972** (slip8 cell, afterok:3612892) and
+**3612973** (slip0 control, afterok:3612893). Each: 3 seeds × {diffusion, TMSE
+dynamics} × 2 eval seeds × n=50, CEM D-MPC, offset 25 (matches the original
+TwoRoom D-MPC setting), positions npz per eval. The whole Route 1 ladder now
+runs unattended: screen → cache (gated) → train (gated) → closed-loop eval.
+Thesis prediction: diffusion > TMSE at slip8 (deterministic averages the two
+slip branches), tie at slip0. If BOTH tie, the dynamics half fails even on
+screened-multimodal dynamics — a much stronger negative than the old one.
+
 **P0a verdict taking shape:** no reliable policy-side objective effect; the
 banked +10 was noise on a high-variance baseline measured with a
 variance-hiding eval design. Final call when seeds 4–8 land — then P0/P0a close
