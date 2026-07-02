@@ -32,10 +32,13 @@ checkpoints/data; no retraining except the seeded reruns.*
 - [x] **Seeded endpoint reruns.** **CLOSED 2026-07-01 — P0a FINAL: at mm05 with
       8 real seeds × n=100, DP 34.9 vs TMSE 33.5 (+1.4 ± ~2.9) — NO objective
       effect. The +10 was noise on an sd~7 baseline under a variance-hiding
-      eval.** Secondary keeper: diffusion HALVES cross-seed variance (3.6 vs
-      7.3). p10 8-seed symmetry check pending (3612576). Full chain of evidence:
-      `experiments/2026-07-01_p0a_mechanism_loop.md` iterations 2–6.
-      **The policy half of the thesis closes as an honest negative on TwoRoom.**
+      eval.** p10 8-seed CONFIRMS (3612576): DP 32.5 (sd 2.8) vs TMSE 31.3
+      (sd 2.7) — no mean effect at either endpoint. **The real finding: TMSE
+      cross-run sd TRIPLES on multimodal demos (2.7→7.3) while DP stays ~3 —
+      the multimodality×objective interaction lives in the VARIANCE.** Full
+      chain: `experiments/2026-07-01_p0a_mechanism_loop.md` iterations 2–7;
+      one-pager rewritten. **Policy half closed; variance-attribution probe
+      (3613638) in flight.**
 - [ ] **Done =** wall-clustering + higher mm0 fit error ⇒ claim training-time
       mode-averaging as the mechanism; otherwise write "empirical, mechanism open"
       and do NOT over-claim. Either way update PROGRESS_ONEPAGER.md.
