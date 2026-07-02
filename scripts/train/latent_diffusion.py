@@ -80,6 +80,10 @@ def latent_diffusion_forward(self, batch, stage, cfg):
     version_base=None, config_path='./config', config_name='latent_diffusion'
 )
 def run(cfg):
+    # Full run seeding — cfg.seed alone only seeded the train/val split (same
+    # bug the policy script had; audit 2026-06-29 / P0a).
+    pl.seed_everything(cfg.seed, workers=True)
+
     #########################
     ##       dataset       ##
     #########################

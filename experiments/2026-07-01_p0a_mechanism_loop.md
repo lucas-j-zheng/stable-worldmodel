@@ -184,6 +184,27 @@ hjepa-dose-latent / hjepa-pusht-kstep jobs ran tonight); this loop feeds it.
   **no encoder retrain needed for Route 1.** If both screens pass, the next
   stage is diffusion-vs-deterministic dynamics training on slip latents.
 
+**Addendum 2 (~21:45) — P1 Route 1 full pipeline queued + dynamics MSE control built:**
+- **`TransformerMSEDynamics`** (`wm/latent_diffusion/transformer_mse_dynamics.py`):
+  the dynamics-side analogue of the policy TransformerMSE control — same
+  LatentTrajectoryDenoiser backbone, MSE objective, deterministic forward. This
+  is what makes the slip test a clean OBJECTIVE contrast (diffusion vs
+  same-backbone MSE), and it also fixes the old training-budget-parity confound
+  (both post-hoc, same budget). Also patched `latent_diffusion.py` with
+  `seed_everything` (same unseeded-split bug the policy script had).
+- **Gotcha found & handled:** `wm.latent_diffusion` is name-shadowed by its inner
+  `latent_diffusion.py` (a pre-existing `import *` collision), so
+  `_target_=...latent_diffusion.TransformerMSEDynamics` would resolve to the
+  wrong module. Reference the class by full submodule path
+  (`...latent_diffusion.transformer_mse_dynamics.TransformerMSEDynamics`) and
+  left the package `__init__` untouched.
+- **Queued chain (all `afterok`):** slip screen 3612481 → latent cache 3612577 →
+  dynamics cells **3612892 (slip8)** / **3612893 (slip0 control)**, each 3 seeds
+  × {diffusion, TMSE} with an in-job bimodality gate. Slip changes dynamics only
+  (default 1-door geometry) so `lewm_tworoom` is in-distribution — no encoder
+  retrain. NEXT after these: closed-loop D-MPC eval (diff vs det) on the slip env
+  — the actual dynamics-half verdict.
+
 **P0a verdict taking shape:** no reliable policy-side objective effect; the
 banked +10 was noise on a high-variance baseline measured with a
 variance-hiding eval design. Final call when seeds 4–8 land — then P0/P0a close

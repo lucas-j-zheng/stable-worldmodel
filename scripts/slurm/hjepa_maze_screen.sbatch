@@ -38,9 +38,13 @@ mkdir -p logs
 
 DS=pointmaze_medium_rand_T64.lance
 
-# 1. collect (state-only, random policy, no rendering)
-python scripts/data/collect_maze_screen.py \
-  --episodes 3000 --maze-type medium --steps 64 --num-envs 8 --out $DS
+# 1. collect (state-only, random policy, no rendering) — skip if already there
+if [ ! -d "$STABLEWM_HOME/datasets/${DS}" ]; then
+  python scripts/data/collect_maze_screen.py \
+    --episodes 3000 --maze-type medium --steps 64 --num-envs 8 --out $DS
+else
+  echo "[hjepa-maze] dataset $DS exists, skipping collection"
+fi
 
 # 2. probe columns
 python - << PY
@@ -56,7 +60,7 @@ for K in 1 2 4 8 16; do
     python scripts/data/multimodality_diagnostic.py \
       --dataset $DS --tag "hjepa_maze_k${K}_${COARSE}" \
       --mode dynamics_k --horizon $K --coarse-action $COARSE \
-      --target-col state --cond-cols state \
+      --target-col observation --cond-cols observation \
       --k 96 --n-anchors 4000 \
       || echo "[hjepa-maze] SKIP K=$K $COARSE"
   done
