@@ -319,3 +319,27 @@ mse≈knn parity; (2) tuned mdn/diff ≥ 0.75 on mm0_latent; if diff stays ~0 th
 small-MLP DDPM is inadequate at 192-d and the paper's latent-space generative
 representatives are kNN/MDN (the law is about objective family, not diffusion
 specifically — already established in R11/R14).
+
+### Rung-5 design (build starts when E16 lands; recorded now)
+
+Harness: `scripts/plan/eval_wm.py` (latent MPC, CEM, tworoom.yaml) — extend
+rather than replace.
+1. **Level-1 competence gate (C8):** run the standard eval with goals at
+   graded distances (near→far); success-vs-distance curve sets the subgoal
+   step K* the hierarchy can rely on (expect K*≈8 given F=8 CEM).
+2. **Proposer arm:** subgoal generator p(z_{t+K}|z_t, goal) — kNN retrieval
+   (proven in both spaces) vs MSE MLP (the mean baseline) vs MDN if E16
+   rehabilitates it. Space (latent vs state+encode) decided by E16.
+3. **Hierarchical loop:** every K steps propose M=16 subgoals, score by
+   (i) level-1 reachability proxy (CEM cost after level-1 planning toward the
+   subgoal) + (ii) progress-to-final-goal; commit to best; level-1 CEM plans
+   toward it with the SAME budget as flat baseline per compute-matched rule.
+4. **Baselines:** flat CEM F=8 (stock), flat CEM compute-matched (more
+   samples/iters), MSE-proposer + CEM jitter (B5 fairness arm).
+5. **Cells:** mm0 dose (0.5) + p10 control × {flat, flat-matched, hier-MSE,
+   hier-kNN}; n=50 × ≥3 eval seeds; report thesis (kNN>MSE at level 2) and
+   capability (hier>flat) SEPARATELY (they can dissociate).
+**Pre-registered:** hier-kNN > hier-MSE on mm0 long-horizon goals (the R11
+precision gap must surface closed-loop as wall-crashes/wrong-room commits for
+MSE proposals); hier-kNN ≈ hier-MSE on p10; hier-vs-flat reported without
+prejudice.
