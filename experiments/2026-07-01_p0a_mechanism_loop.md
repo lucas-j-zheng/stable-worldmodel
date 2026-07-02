@@ -393,3 +393,25 @@ sets), so 6 models ≫ the 6h limit. Cancelled 3613074/75/76/77 preemptively and
 rechained with **EP=100** (63k steps/model — the seeded policy models that
 produced clean results saw 500 steps total): dyncells **3614760** (slip8) /
 **3614761** (slip0) → verdicts **3614762** / **3614763**. ~3.6h/cell, fits.
+
+---
+
+## Iteration 11 — 2026-07-02 ~10:55: SLIP8 VERDICT — diffusion dynamics +6, consistent across seeds
+
+Closed-loop D-MPC (CEM) on the slip8 env (job 3614762; offset 25, 2 eval seeds
+× n=50 per seed):
+
+| train seed | Diffusion | TMSE-dynamics |
+|---|---|---|
+| 1 | 69 (68/70) | 61 (58/64) |
+| 2 | 69 (68/70) | 64 (58/70) |
+| 3 | 73 (68/78) | 68 (68/68) |
+| **mean** | **70.3** | **64.3** |
+
+**Diffusion beats the same-backbone MSE dynamics by +6 on screened-bimodal
+transitions — direction consistent in ALL seeds, spreads tight (unlike the
+policy-side pseudo-effect, which flapped seed-to-seed).** Gap ≈ +6 ± ~2.4.
+HOLD the headline until the slip0 CONTROL (3614763, running) reads: tie there
+⇒ first confirmed multimodality×objective interaction on the DYNAMICS side
+(the thesis's missing half, on its fair architecture-matched, budget-matched
+test); +6 there ⇒ artifact, back to the drawing board.
