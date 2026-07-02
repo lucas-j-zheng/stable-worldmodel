@@ -343,3 +343,20 @@ rather than replace.
 precision gap must surface closed-loop as wall-crashes/wrong-room commits for
 MSE proposals); hier-kNN ≈ hier-MSE on p10; hier-vs-flat reported without
 prejudice.
+
+---
+
+## Cycle 6 — 2026-07-02
+
+### E16 verdict (R20): latent dose contrast CONFIRMED; MDN rehabilitated;
+DDPM inadequate at 192-d (as pre-registered fallback); NEW symmetric finding —
+wrong-head cost runs both directions (MDN pays on unimodal latent data), so
+the screen is a head-SELECTION tool. Rung 5 is a GO with kNN/MDN proposers.
+
+### E17: level-1 competence gate (hjepa_competence_gate.sbatch)
+
+Flat deterministic-LeWM CEM on mm TwoRoom, offset ∈ {4,8,12,16,20} (T≈25 caps
+offsets). Sets K* (largest offset with ≥40% success) and the flat baseline.
+Pre-registered: monotone decrease; K* ∈ [8,16]; if offset-20 still ≥40%, flat
+has no long-horizon deficit at data-reachable offsets → rung-5 capability
+payoff needs cross-episode goals (thesis payoff unaffected).
