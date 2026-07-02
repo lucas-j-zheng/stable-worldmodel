@@ -484,3 +484,30 @@ curriculum, drops the v-target), 3 seeds × both slip levels, eval @1 & @20.
 x0 ≈ v ⇒ the NOISE CURRICULUM is the ingredient; x0 ≈ TMSE ⇒ the v-target is.
 (NB the old paramtype sweep found x0 best open-loop / worst planner AT 20-STEP
 SAMPLING on deterministic data — this retests at 1 step on the slip cells.)
+
+---
+
+## Iteration 14 — 2026-07-02 ~15:50: x0 slip8 cell — THE NOISE CURRICULUM IS THE INGREDIENT (job 3618840)
+
+| slip8, 3 seeds × n=100 | @1 step | @20 steps |
+|---|---|---|
+| x0 (denoising regression) | **78.3** (73/81/81) | 67.7 |
+| v-param (iter 13) | 74.0 | 70.3 |
+| TMSE (clean-input regression) | 64.3 | — |
+
+**x0@1 is the best dynamics model of the whole program: +14 over clean-input
+MSE, same backbone/data/budget.** The v-target is not the ingredient (x0 ≥ v);
+**training on noise-corrupted inputs across the diffusion schedule is.** Bonus
+resolution: x0@20 (67.7) < x0@1 (78.3) — DDIM sampling actively hurts the x0
+model, which retroactively explains the old "x0 best open-loop / worst planner"
+anti-ranking (that was a SAMPLING penalty at 20 steps, not a bad model).
+slip0 x0 cell (3618841) running — expect the same pattern (mechanism is
+multimodality-independent).
+
+**The arc's final shape (pending slip0-x0 confirmation):** "diffusion world
+models beat deterministic ones" on this benchmark family reduces to *denoising
+regression is a better training recipe for one-shot latent dynamics than clean
+MSE* — no sampling, no multimodality, no iterative refinement required. Paper
+framing: a deflationary mechanism study with two constructive artifacts (the
+noise-curriculum regressor recipe; the variance-stabilized diffusion policy)
+plus the methodology lesson (controls + seeds kill both naive interactions).
