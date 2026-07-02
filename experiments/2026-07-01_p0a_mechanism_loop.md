@@ -453,3 +453,34 @@ multimodal* — is dead on BOTH sides of this benchmark family. What survives:
 cells. Gap collapses ⇒ iterative-refinement compute is the advantage; gap
 survives ⇒ the denoising objective trains a genuinely better one-shot
 predictor (training-time, mirroring the policy variance story).
+
+---
+
+## Iteration 13 — 2026-07-02 ~14:20: 1-STEP PROBE — the dynamics gap is the TRAINING OBJECTIVE (job 3618231)
+
+| | slip8 | slip0 |
+|---|---|---|
+| Diffusion @20 steps | 70.3 | 75.7 |
+| **Diffusion @1 step** | **74.0** | **73.7** |
+| TMSE (1 forward) | 64.3 | 65.7 |
+
+**The gap does NOT collapse at one inference step — a single forward pass of
+the diffusion-trained model matches its own 20-step sampling and beats TMSE by
++8–10.** Iterative-refinement compute is ruled out. The denoising objective
+trains a genuinely better ONE-SHOT dynamics predictor than direct MSE
+regression (same backbone/data/budget).
+
+**UNIFIED PICTURE (both halves of the program):** every surviving diffusion
+advantage is a TRAINING-TIME property of the denoising objective —
+(policy) cross-run variance stabilization on heterogeneous targets;
+(dynamics) better one-shot predictors — and NONE of it is test-time multimodal
+sampling. The strict multimodality law is dead; the honest replacement:
+*"denoising is a better training signal for regression-hard targets; sampling
+per se buys nothing here."*
+
+**Launched (mechanism rung 2): 3618840/3618841** — `prediction_type=x0` cells
+(same denoiser, denoising regression of the clean target: keeps the noise
+curriculum, drops the v-target), 3 seeds × both slip levels, eval @1 & @20.
+x0 ≈ v ⇒ the NOISE CURRICULUM is the ingredient; x0 ≈ TMSE ⇒ the v-target is.
+(NB the old paramtype sweep found x0 best open-loop / worst planner AT 20-STEP
+SAMPLING on deterministic data — this retests at 1 step on the slip cells.)
