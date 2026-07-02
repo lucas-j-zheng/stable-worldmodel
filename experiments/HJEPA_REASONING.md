@@ -273,3 +273,13 @@ proposer level ⇒ E10 latent bench + rung-4/5 build. 1 fails (MSE precision
 fine) ⇒ the modes, though present, are too shallow to hurt the mean — measure
 gap-depth vs precision relation, rethink. 2 fails (gap on p10 too) ⇒ eval bug
 or leakage — audit before anything else.
+
+### E13: bench K-sweep + dose curve (hjepa_bench_ksweep_dose.sbatch)
+
+The "screen predicts the win" central figure: MSE precision deficit vs the
+screen's reading, across K∈{4,8,16} (mm0) and door_prob∈{0.5,0.7,0.9,1.0}
+(K=8). Pre-registered: deficit grows with K (saturation allowed, T≈25);
+deficit monotone in dose; knn/mdn flat. Follow-ups queued behind results:
+mini rung-5 closed-loop proposer planning (+level-1 competence gate first),
+rung-4 SIGReg Pareto, trimodal (3-door) falsification test of gap_ratio,
+per-anchor gap-vs-precision mechanism figure.

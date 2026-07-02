@@ -286,3 +286,15 @@ the variance ratio, this is a defensible, novel-ish observation for the writeup.
 - The program's live thesis bet is now entirely on the DYNAMICS side:
   the slip chain (3613072→…→3613076/77) and the K-step/H-JEPA route.
 - PROGRESS_ONEPAGER rewrite queued for when p10 lands (both endpoints final).
+
+**Follow-ups launched (~23:20):**
+- **3613638 variance-mechanism probe:** re-eval the 8 mm05 DP checkpoints under
+  sampling variations (eta 1.0, steps 5/50 vs base) via a new
+  `+model_overrides` hook in eval_wm.py. Flat cross-seed sd across configs ⇒
+  the stabilization is training-time (objective/loss landscape); sd moving with
+  the sampler ⇒ sampling-averaging. Decides how to frame the keeper finding.
+- **3613639 sub-pixel slip dose:** S ∈ {0.25, 0.5, 1} — resolves the saturated
+  dose curve (0.11→0.98 between S=0 and 2) into a graded transition + locates
+  the screen's detection threshold.
+- Deferred: the observed-control shift-fix in the diagnostic (next iteration;
+  the S=0-vs-S>0 dose remains the control meanwhile).

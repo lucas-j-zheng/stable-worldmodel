@@ -97,6 +97,14 @@ def run(cfg: DictConfig):
 
     if policy != 'random':
         model = swm.wm.utils.load_pretrained(cfg.policy)
+        # Optional sampling-knob overrides on the loaded checkpoint (e.g.
+        # +model_overrides='{eta: 1.0, num_inference_steps: 5}') — used by the
+        # variance-mechanism probe to vary sampling without retraining.
+        for k, v in (cfg.get('model_overrides') or {}).items():
+            if not hasattr(model, k):
+                raise AttributeError(f'model_overrides: model has no attr {k!r}')
+            print(f'[eval] model override: {k} = {v}')
+            setattr(model, k, v)
         if cfg.get('bf16', False):
             model = model.to(torch.bfloat16)
         model = model.to('cuda')
