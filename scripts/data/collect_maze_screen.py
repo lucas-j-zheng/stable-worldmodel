@@ -17,6 +17,22 @@ import stable_worldmodel as swm
 from stable_worldmodel.policy import RandomPolicy
 
 
+class PersistentRandomPolicy(RandomPolicy):
+    """Random actions held for `persist` steps -- a correlated walk that
+    actually covers distance. A plain per-step random walk diffuses ~sqrt(K)
+    and never straddles maze junctions within small K (E7 lesson, R10)."""
+
+    def __init__(self, persist=4, **kw):
+        super().__init__(**kw)
+        self.persist, self._n, self._a = max(1, int(persist)), 0, None
+
+    def get_action(self, obs, **kw):
+        if self._a is None or self._n % self.persist == 0:
+            self._a = self.env.action_space.sample()
+        self._n += 1
+        return self._a
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--episodes', type=int, default=3000)
@@ -24,11 +40,15 @@ def main():
                     help='arena | medium | large | giant | teleport')
     ap.add_argument('--steps', type=int, default=64, help='max episode steps')
     ap.add_argument('--num-envs', type=int, default=8)
+    ap.add_argument('--persist', type=int, default=1,
+                    help='hold each random action this many steps')
     ap.add_argument('--out', default=None, help='output .lance name')
     ap.add_argument('--seed', type=int, default=0)
     args = ap.parse_args()
 
-    out = args.out or f'pointmaze_{args.maze_type}_rand_T{args.steps}.lance'
+    out = args.out or (f'pointmaze_{args.maze_type}_rand'
+                       f'{"" if args.persist == 1 else f"_p{args.persist}"}'
+                       f'_T{args.steps}.lance')
 
     world = swm.World(
         'swm/OGBMaze-v0',
@@ -40,7 +60,8 @@ def main():
         ob_type='states',
         max_episode_steps=args.steps,
     )
-    world.set_policy(RandomPolicy())
+    world.set_policy(PersistentRandomPolicy(persist=args.persist)
+                     if args.persist > 1 else RandomPolicy())
 
     path = Path(swm.data.utils.get_cache_dir()) / 'datasets' / out
     print(f'[maze-collect] {args.episodes} eps x T={args.steps} '

@@ -194,7 +194,8 @@ def train_head(name, Xtr, Ytr, dev, epochs=25, bs=512):
 
 
 @torch.no_grad()
-def head_samples(name, model, Xva, m, dev, Ytr=None, tree=None, Ytr_all=None):
+def head_samples(name, model, Xva, m, dev, Ytr=None, tree=None, Ytr_all=None,
+                 Xq=None):
     X = torch.tensor(Xva, device=dev)
     dout = Ytr_all.shape[1]
     if name == 'mse':
@@ -211,7 +212,7 @@ def head_samples(name, model, Xva, m, dev, Ytr=None, tree=None, Ytr_all=None):
     if name == 'diff':
         return model.sample(X, m).cpu().numpy()
     if name == 'knn':
-        _, nbr = tree.query(Xva, k=32)
+        _, nbr = tree.query(Xq if Xq is not None else Xva, k=32)
         rng = np.random.default_rng(0)
         pick = rng.integers(0, 32, size=(Xva.shape[0], m))
         return Ytr_all[nbr[np.arange(len(Xva))[:, None], pick]]
@@ -234,20 +235,32 @@ def evaluate(samples, Yemp_sets, mean_pred):
         pr.append(float((d_se.min(1) < 2 * delta).mean()))
         mg.append(float(np.linalg.norm(mean_pred[i] - Ye, axis=-1).min()
                         / delta))
-        # 2-mode coverage
+        # 2-mode coverage (in top-3 PC space of Ye when high-dim: a full-cov
+        # GMM on k~64 samples in 192-d is singular; S is projected the same
+        # way so distances are comparable)
         if Ye.shape[0] >= 16:
-            proj = Ye - Ye.mean(0)
+            mu0 = Ye.mean(0)
+            Yp, Sp = Ye - mu0, S - mu0
+            if Yp.shape[1] > 8:
+                try:
+                    _, _, vt = np.linalg.svd(Yp, full_matrices=False)
+                    Yp, Sp = Yp @ vt[:3].T, Sp @ vt[:3].T
+                except np.linalg.LinAlgError:
+                    Yp, Sp = Yp[:, :3], Sp[:, :3]
+            d_pp = np.linalg.norm(Yp[:, None] - Yp[None], axis=-1)
+            np.fill_diagonal(d_pp, np.inf)
+            delta_p = np.median(d_pp.min(1)) + 1e-9
             try:
-                g1 = GaussianMixture(1, random_state=0).fit(proj)
-                g2 = GaussianMixture(2, random_state=0, n_init=2).fit(proj)
-                if g2.bic(proj) < g1.bic(proj):
-                    mus = g2.means_ + Ye.mean(0)
+                g1 = GaussianMixture(1, random_state=0).fit(Yp)
+                g2 = GaussianMixture(2, random_state=0, n_init=2).fit(Yp)
+                if g2.bic(Yp) < g1.bic(Yp):
                     sep = np.linalg.norm(g2.means_[0] - g2.means_[1])
                     sig = np.sqrt(g2.covariances_.reshape(2, -1).mean())
                     if sep > 2 * sig:
                         cov_tot += 2
-                        for mu in mus:
-                            if np.linalg.norm(S - mu, axis=-1).min() < 2 * delta:
+                        for mu in g2.means_:
+                            if np.linalg.norm(Sp - mu, axis=-1).min() \
+                                    < 2 * delta_p:
                                 cov_hits += 1
             except Exception:
                 pass
@@ -263,6 +276,8 @@ def evaluate(samples, Yemp_sets, mean_pred):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dataset', required=True)
+    ap.add_argument('--state-col', default='state',
+                    help='column used as state/target (e.g. latent)')
     ap.add_argument('--horizon', type=int, default=8)
     ap.add_argument('--heads', nargs='+',
                     default=['mse', 'gauss', 'mdn', 'knn', 'diff'])
@@ -281,7 +296,7 @@ def main():
 
     import stable_worldmodel as swm
     ds = swm.data.load_dataset(args.dataset)
-    eps = build_pairs(ds, args.horizon)
+    eps = build_pairs(ds, args.horizon, scol=args.state_col)
     rng = np.random.default_rng(args.seed)
     order = rng.permutation(len(eps))
     n_val = max(1, len(eps) // 10)
@@ -300,13 +315,25 @@ def main():
     Xtrn, Ytrn = (Xtr - xm) / xs, (Ytr - ym) / ys
     Xvan, Yvan = (Xva - xm) / xs, (Yva - ym) / ys
 
+    # neighbor-QUERY space: PCA-reduce high-dim conditioning (192-d latent) so
+    # k-NN neighborhoods stay local (mirrors the screen's auto-PCA). Models
+    # still receive the full conditioning.
+    if Xtrn.shape[1] > 48:
+        _, s_, vt_ = np.linalg.svd(Xtrn - Xtrn.mean(0), full_matrices=False)
+        P = vt_[:32].T
+        Xtrq, Xvaq = Xtrn @ P, Xvan @ P
+        print(f'[bench] query-space PCA {Xtrn.shape[1]}->32 '
+              f'(var kept {float((s_[:32]**2).sum()/(s_**2).sum()):.3f})')
+    else:
+        Xtrq, Xvaq = Xtrn, Xvan
+
     # empirical conditional sets on the VAL split
-    tree_va = BallTree(Xvan)
+    tree_va = BallTree(Xvaq)
     anchors = rng.choice(Xvan.shape[0],
                          min(args.n_anchors, Xvan.shape[0]), replace=False)
-    _, nbr = tree_va.query(Xvan[anchors], k=min(args.k_emp, Xvan.shape[0]))
+    _, nbr = tree_va.query(Xvaq[anchors], k=min(args.k_emp, Xvan.shape[0]))
     Yemp = [Yvan[row] for row in nbr]
-    tree_tr = BallTree(Xtrn)
+    tree_tr = BallTree(Xtrq)
 
     results = {}
     for name in args.heads:
@@ -315,14 +342,16 @@ def main():
         if name not in ('knn',):
             model = train_head(name, Xtrn, Ytrn, dev, epochs=args.epochs)
         S = head_samples(name, model, Xvan[anchors], args.m_samples, dev,
-                         tree=tree_tr, Ytr_all=Ytrn)
+                         tree=tree_tr, Ytr_all=Ytrn, Xq=Xvaq[anchors])
         mean_pred = S.mean(1)
         res = evaluate(S, Yemp, mean_pred)
         results[name] = res
         print(f'[bench] {name}: {json.dumps(res)}')
 
-    out = args.out or (f'logs/proposer_bench_'
-                       f'{Path(args.dataset).stem}_k{args.horizon}.json')
+    suffix = '' if args.state_col == 'state' else f'_{args.state_col}'
+    sfx_seed = '' if args.seed == 0 else f'_s{args.seed}'
+    out = args.out or (f'logs/proposer_bench_{Path(args.dataset).stem}'
+                       f'_k{args.horizon}{suffix}{sfx_seed}.json')
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(json.dumps(
         {'dataset': args.dataset, 'horizon': args.horizon,

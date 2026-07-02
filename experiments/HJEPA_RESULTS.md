@@ -160,3 +160,54 @@ grows 4.5→5.7σ. RUNG 3 UNLOCKED → E9 (job 3612901).
 3000 eps collected in ~3 min (state-only). Column is `observation`, not
 `state` — all cells skipped. Attempt 3 (3612881) runs screens with
 `--target-col observation`; collection skipped (dataset cached).
+
+### R10 — E7 maze (job 3612881): NEGATIVE for random walk (pre-registered risk 4)
+
+`none` cell: bimodal ≈ 0.00 at ALL K≤16, res_ratio only 0.013→0.050 — a
+per-step random walk diffuses ~√K and never straddles junctions. (full/sum
+bimodal 0.4–0.9 on 0.1–0.7% residuals = the tiny-residual artifact, ignore.)
+NOT a domain kill: data-policy limitation → E11 persistent-walk retry
+(hold-4 actions, T=128, K≤32; job 3613349).
+
+### R11 — E9 PROPOSER BENCH (job 3612901): **THE STRICT THESIS CONFIRMS**
+
+p(s_{t+8}|s_t,goal), episode-split, 1000 anchors, M=32 samples/head:
+
+| head | mm0 precision | mm0 coverage | mm0 energy | p10 precision | p10 coverage |
+|---|---|---|---|---|---|
+| mse | 0.608 | **0.058** | 0.393 | 0.857 | 0.076 |
+| gauss | 0.629 | 0.270 | 0.205 | 0.832 | 0.182 |
+| mdn | **0.850** | 0.469 | 0.185 | 0.881 | 0.224 |
+| knn | **0.895** | **0.594** | **0.107** | 0.916 | 0.467 |
+| diff | 0.776 | 0.524 | 0.145 | 0.805 | 0.258 |
+
+(dp05 replicates mm0 almost exactly.) Pre-registered predictions: (1) ✓ MSE
+precision collapses on multimodal data (−0.24 to −0.29 vs mdn/knn) and its
+mean covers essentially NO mode (0.058); (2) ✓ p10 parity (MSE −0.02…−0.06,
+within head noise); (3) ✓ mdn ≈ knn ≥ diff — **diffusion is NOT special on 2
+hard modes; k-NN retrieval, the cheapest possible sampler, wins energy
+everywhere**; (4) ✓ gauss ≈ mse precision (calibration ≠ mode-splitting);
+(5) partial — generative coverage 0.47–0.61 (< the registered 0.8; the 2δ
+criterion is strict), MSE 0.06 (worse than the 0.5 registered — the mean sits
+near NEITHER mode). **First positive, dose-controlled det-vs-generative result
+of the project** — at the goal-conditioned K-step proposer, exactly where the
+screen said it must live. Caveats: state-space toy (E10 = latent version
+running), single seed (E12 seeds running), no closed-loop yet (rung 5).
+
+### R12 — E8a policy retro-test: 06-30 soft-mode hypothesis is DEAD
+
+Conditioning-matched policy conditional: BC ~0.006 everywhere (replicates
+06-30); gmm2_frac shows NO dose direction (mm0 0.37–0.51 vs p10 0.79–0.80 —
+higher on the UNIMODAL set) and gap_ratio ≈ 1.00 everywhere: whatever soft
+structure exists, the conditional mean sits at FULL density. Combined with the
++10 seeding collapse (P0a): the policy side is now fully law-consistent —
+no modes ⇒ no gap. The 2×2 is coherent: policy (no modes, no gap) vs proposer
+(modes, gap).
+
+### R13 — E8b seeds + E5 stride/coarseness: instrument robustness banked
+
+Seed σ(bimodal_frac) ≈ 0.005 (dp05 K8/none: .916/.918/.923; gap_ratio .033–
+.035 — the unconditioned deep-gap number is rock solid). Stride=8
+(decorrelated): none 0.859 vs 0.918 (−6%), sum 0.164 vs 0.135 (+21%) — inside
+the registered ±30%. Coarseness dial at K=8 perfectly monotone:
+full .059 < sum .135 ≈ sumhalf .138 < dir .233 < none .918.
