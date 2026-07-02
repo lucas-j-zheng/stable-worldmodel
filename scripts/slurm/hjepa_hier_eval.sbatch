@@ -40,8 +40,9 @@ mkdir -p logs
 
 DET_CKPT=${DET_CKPT:-lewm_tworoom/weights_epoch_300.pt}
 
+ARMS=${ARMS:-"sample mean off"}
 for OFF in 12 16; do
-  for ARM in sample mean off; do
+  for ARM in $ARMS; do
     echo "[hier] offset=$OFF arm=$ARM ..."
     python scripts/plan/eval_hier.py \
       policy="$DET_CKPT" cache_dir="$LOCAL_DATASET_DIR" \

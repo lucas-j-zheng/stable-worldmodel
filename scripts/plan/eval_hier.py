@@ -128,13 +128,22 @@ class SubgoalPolicy(swm.policy.BasePolicy):
                 frames.append(self.bank.propose(s, g, self.arm, self.k))
             self._cached = frames
         new_goal = np.array(goal)                    # copy, keep dtype/shape
+
+        def fit(f, shape):
+            # dataset frames are (H, W, C); env goal may be channel-first
+            if f.shape == tuple(shape):
+                return f
+            if f.transpose(2, 0, 1).shape == tuple(shape):
+                return f.transpose(2, 0, 1)
+            raise ValueError(f'frame {f.shape} vs goal slot {tuple(shape)}')
+
         for i, f in enumerate(self._cached):
             flat = new_goal[i]
-            # goal may carry a leading time dim (n, 1, H, W, C)
+            # goal may carry a leading time dim (n, 1, C, H, W)
             if flat.ndim == 4:
-                flat[0] = f
+                flat[0] = fit(f, flat[0].shape)
             else:
-                flat[...] = f
+                flat[...] = fit(f, flat.shape)
             new_goal[i] = flat
         info_dict = dict(info_dict)
         info_dict['goal'] = new_goal

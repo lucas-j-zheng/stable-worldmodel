@@ -293,3 +293,11 @@ Flat deterministic-LeWM CEM on mm TwoRoom: **86 / 52 / 28 / 10 / 4 %** at
 offsets 4/8/12/16/20 (n=50). K*=8 (pre-registered ≥40% bar; matches the
 historical 52–58%). Flat planning collapses beyond K* → rung-5 task set is
 offsets {12,16} with K=8 subgoals; large capability headroom exists.
+
+### R22 — E18 v1 (job 3618737): flat arms replicate E17; proposer arms hit a
+layout bug
+
+`off` arms: 14/50 (offset 12) and 5/50 (offset 16) — matching E17's 28%/10%
+exactly, so the eval_hier harness port is faithful. `sample`/`mean` arms died
+on channel order (env goal is (C,H,W), dataset frames (H,W,C)) — fixed,
+resubmitted as 3618980 (proposer arms only).
