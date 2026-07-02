@@ -227,7 +227,7 @@ screened-multimodal dynamics — a much stronger negative than the old one.
 | 0 | 0.114 (unimodal floor) |
 | 2 | 0.975 |
 | 4 | 0.987 |
-| 8 | (dataset truncated — recollecting) |
+| 8 | 0.984 (recollected, job 3613072) |
 
 **The intrinsic slip env delivers exactly the designed multimodality: pervasive,
 hard, dose-gated bimodal dynamics** (0.11 → 0.98 the moment the coin exists;
