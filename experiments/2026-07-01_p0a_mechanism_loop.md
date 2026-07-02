@@ -326,3 +326,32 @@ sub-pixel dose running locally, K-step route in Lucas's lane.
   the screen's detection threshold.
 - Deferred: the observed-control shift-fix in the diagnostic (next iteration;
   the S=0-vs-S>0 dose remains the control meanwhile).
+
+---
+
+## Iteration 8 — 2026-07-02 ~00:40: sub-pixel slip dose complete (ran LOCALLY on the Mac)
+
+| slip_scale S | residual_ratio | residual_bimodal |
+|---|---|---|
+| 0    | —      | 0.114 |
+| 0.25 | 0.0063 | 0.896 |
+| 0.5  | 0.0100 | 0.905 |
+| 1    | 0.0179 | 0.926 |
+| 2    | —      | 0.975 |
+| 4    | —      | 0.987 |
+| 8    | —      | 0.984 |
+
+**Reading:** the bimodality FLAG is effectively binary — it switches on at a
+quarter-pixel slip (0.11 → 0.90) because Sarle BC detects any hard separation
+above the kNN floor. The genuinely graded axis is the residual MAGNITUDE
+(`residual_ratio` ≈ linear in S: 0.006 → 0.010 → 0.018). For the paper: dose =
+residual scale (2S) with bimodality as a qualifier, not the x-axis. Also sets up
+a sharper prediction for the verdict cells: the diffusion-vs-MSE planning gap
+should track residual MAGNITUDE (how much the averaged prediction is off), not
+the flag — testable later by adding slip1/slip2 verdict cells if slip8 wins.
+
+Ops notes: ran on the Mac per Lucas's local-runs-OK rule (Oscar quota full).
+Local venv needed scikit-learn (uv). The diagnostic resolves datasets via
+STABLEWM_HOME (LOCAL_DATASET_DIR alone insufficient). One truncated dataset
+from a killed background task recollected under a fresh name (rm was denied;
+scratchpad self-cleans).
