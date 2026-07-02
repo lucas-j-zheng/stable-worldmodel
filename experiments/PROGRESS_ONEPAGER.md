@@ -33,61 +33,67 @@ diagnostic: these dynamics are near-**deterministic given the action**
 (`p(z'|z,a)` residual ≈ Gaussian) — there is no multimodality for a generative
 model to capture, so it only adds sampling variance.
 
-**2. The multimodality lives in the *policy*, not the dynamics.**
-`p(action | obs)` is multimodal (many valid behaviors); `p(next-state | s,a)` is
-not (physics). So the generative model belongs on the policy side. A diffusion
-*policy* on multimodal (random-door) TwoRoom beats both MSE baselines:
-**Diffusion ~37%** vs **Transformer-MSE ~27%** vs **MLP-MSE 18%** (n=50, 3 unseeded reruns).
+**2. On the policy side, diffusion does NOT improve mean success — the earlier
+"+10" did not survive proper seeding (2026-07-01 final).** With real seeds
+(`seed_everything`; the prior "3-seed" runs were unseeded), 8 training seeds per
+cell, and 2 eval seeds × n=50 per run (episode-sampling variance included), the
+architecture-controlled 2×2 is:
 
-**3. The advantage is the *objective*, not the architecture.**
-Holding the transformer backbone fixed and swapping diffusion→MSE drops 37→27 in the
-multimodal cell — that **+10 is the diffusion objective**. The backbone is *not*
-free, though: at the unimodal endpoint the transformer alone lifts MLP 14→TMSE 36,
-while the objective there adds ~0. So the diffusion objective is the entire lift
-*where multimodality is present*, and ~nothing where it isn't. Mechanism: MSE
-policies average the two routes → drive into the wall between the doors → fail; the
-diffusion policy commits to one mode → succeeds.
-
-**4. The advantage tracks the *demonstrator's* multimodality — but it is NOT
-test-time conditional multimodality (2026-06-30 reframe).** Holding the transformer
-backbone fixed and varying only the data via the `door_prob` dose (success %, offset
-8, n=50, mean over 3 unseeded reruns; ±~5/cell run-to-run noise; architecture-
-controlled, DP vs same-backbone TransformerMSE):
-
-| | Multimodal (door_prob 0.5) | Unimodal (door_prob 1.0) |
+| 8 seeds × n=100, mean (cross-seed sd) | Multimodal (door_prob 0.5) | Unimodal (door_prob 1.0) |
 |---|---|---|
-| Diffusion Policy | **37.3** | 37.3 |
-| Transformer-MSE  | **27.3** | 36.0 |
-| Diffusion − MSE  | **+10** | **+1 (tie)** |
+| Diffusion Policy | 34.9 **(3.6)** | 32.5 **(2.8)** |
+| Transformer-MSE  | 33.5 **(7.3)** | 31.3 **(2.7)** |
+| mean gap | +1.4 (≈0) | +1.25 (≈0) |
 
-The gap tracks the dose **measured under *destination* conditioning** (`policy_target`
-residual_bimodal 0.58 → 0.17 across door_prob 0.5 → 1.0). BUT under the conditioning
-the policy actually uses — history + the +8 *latent* goal — the action conditional is
-**unimodal**, and multimodal data is indistinguishable from unimodal (residual_bimodal
-~0.006 both; jobs 3575246/3575527). So the win is real and dose-dependent, yet the
-clean "the policy samples one of several modes *at test time*" story is **falsified
-here**: the relevant multimodality is in the training *demonstrations*, not the
-conditional the policy models. Mechanism not yet isolated — see
-`experiments/2026-06-30_attribution_screen.md`.
+The banked +10 was three unseeded TMSE runs landing low on a baseline whose true
+cross-run sd is ~7, read through a fixed-eval-seed design that hid both variance
+terms. Corroborating null: failed episodes show **no mode-averaging signature**
+(TMSE failures at the wall between doors 10–14% ≈ DP 9–11%; both mostly exhaust
+the budget elsewhere).
+
+**3. The real multimodality×objective interaction is in the VARIANCE, not the
+mean.** The MSE objective's cross-training-run sd nearly triples on
+multimodal-demonstrator data (2.7 → 7.3) while diffusion's barely moves
+(2.8 → 3.6). This coheres with a direct fit measurement: multimodal-demonstrator
+action targets are ~1.6× harder to regress (TMSE val MSE 0.39–0.43 vs 0.22–0.27,
+train≈val) — the heterogeneity corrupts the MSE loss landscape enough to
+destabilize training runs, but closed-loop replanning (receding horizon) forgives
+the averaged chunks, so the mean doesn't move. Honest claim: *on
+multimodal-demonstrator data, a diffusion policy is not better on average — it is
+far more reliable across training runs.* (Sampling-vs-training attribution of the
+stabilization: probe in flight.)
+
+**4. Temporal/aleatoric multimodal DYNAMICS exist and are now instrumented
+(2026-07-01).** Two screened routes where `p(next|state,action)` is genuinely
+multimodal: (a) an **intrinsic per-step "slip"** TwoRoom variant — residual
+bimodality 0.11 (slip 0) → 0.98 (slip ≥ 2), pervasive and dose-gated — with the
+diffusion-vs-same-backbone-MSE dynamics comparison + closed-loop D-MPC verdict
+running; (b) **K-step temporal abstraction** — `p(Z_{t+K}|Z_t, Σa)` bimodality
+rises monotonically with K (0.06 → 0.135 at K=8; action-free proposer cell ~0.93),
+greenlighting the H-JEPA level-2 track.
 
 ## Takeaway
-On the **dynamics** side the law holds cleanly: diffusion loses where the modeled
-conditional `p(z'|z,a)` is near-deterministic (TwoRoom, PushT) — *right method, wrong
-side of the problem*. On the **policy** side a diffusion policy genuinely beats a
-same-backbone MSE policy (+10) on multimodal-demonstrator data, and the gap scales
-with the `door_prob` dose — BUT the matched-conditioning screen shows the policy's own
-conditional is unimodal, so the strict "generative beats deterministic iff the modeled
-conditional is multimodal" statement is **not** what's operating here. The honest claim
-is weaker and about the training distribution: *a diffusion policy beats MSE on data
-from a multimodal demonstrator, with a dose-dependent gap*; the mechanism (training-time
-mode-averaging vs test-time sampling) is open.
+On the **dynamics** side the negative half of the law holds: diffusion loses where
+the modeled conditional `p(z'|z,a)` is near-deterministic (TwoRoom, PushT) — *right
+method, wrong side of the problem*. On the **policy** side the once-headline "+10"
+did **not** survive statistical rigor (real seeds, 8 runs/cell, eval-seed variance):
+diffusion and same-backbone MSE tie on mean success at both dose endpoints. What
+survives — and is arguably more interesting — is a **variance law**: *the MSE
+objective becomes unreliable across training runs exactly when the demonstrator is
+multimodal (sd 2.7 → 7.3), while the diffusion objective stays stable (≈3)*,
+consistent with directly-measured fit-error corruption that closed-loop replanning
+otherwise forgives. The strict mean-level "generative beats deterministic iff the
+modeled conditional is multimodal" now rests entirely on the **dynamics** half —
+which finally has screened-multimodal domains to test on.
 
 ## Status & next step
-**Confirmed (architecture-controlled + 3 unseeded reruns, ±~5/cell):** the policy side
-is positive and dose-dependent; the dynamics side is negative and explained.
-**Open on the policy side:** isolate WHY +10 persists when the matched conditional is
-unimodal (training-time mode-averaging? train/eval goal mismatch? calibration?) — cheap
-next step before any stronger multimodality claim. **Missing cell — highest-value
-experiment:** a domain with genuinely *multimodal dynamics* (intrinsic stochastic
-transitions, not bounded-nav POMDP — that track is exhausted) where a diffusion **world
-model** wins, with the same dose knob — the symmetric half of the law.
+**Closed:** policy side (P0a) — no mean effect, variance interaction confirmed at
+both endpoints; dynamics-on-deterministic-physics negatives — explained.
+**In flight (the live bet):** the slip-TwoRoom pipeline — diffusion vs
+same-backbone-MSE *dynamics* (training-budget-matched, 3 seeds) → closed-loop
+D-MPC verdict on pervasively-bimodal transitions (predict: diffusion wins at
+slip=8, ties at slip=0); sub-pixel dose curve; sampling-vs-training attribution
+of the variance stabilization. **Next after that:** if slip verdict is positive,
+a second domain (PushT contact-slip analogue) turns it into a law; the K-step /
+H-JEPA level-2 route (greenlit: bimodality rises with K) is the abstraction-level
+version of the same bet.

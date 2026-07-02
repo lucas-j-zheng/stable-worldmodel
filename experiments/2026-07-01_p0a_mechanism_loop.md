@@ -287,6 +287,34 @@ the variance ratio, this is a defensible, novel-ish observation for the writeup.
   the slip chain (3613072→…→3613076/77) and the K-step/H-JEPA route.
 - PROGRESS_ONEPAGER rewrite queued for when p10 lands (both endpoints final).
 
+---
+
+## Iteration 7 — 2026-07-02 ~00:00: p10 8-seed lands — P0a COMPLETE, and the real finding is in the VARIANCE
+
+**p10 (unimodal), 8 seeds × n=100:** DP 32.5 (sd 2.8) vs TMSE 31.3 (sd 2.7) —
+mean gap +1.25 ≈ 0, matching mm05's +1.4 ≈ 0. Final seeded 2×2 (8 seeds/cell):
+
+| | mm05 (multimodal demos) | p10 (unimodal demos) |
+|---|---|---|
+| DP mean (sd) | 34.9 **(3.6)** | 32.5 **(2.8)** |
+| TMSE mean (sd) | 33.5 **(7.3)** | 31.3 **(2.7)** |
+| mean gap | +1.4 (≈0) | +1.25 (≈0) |
+
+**FINAL P0a SYNTHESIS.** (1) *Mean* success: NO diffusion-objective effect at
+either endpoint — the original +10 is conclusively noise. (2) *Variance*: a
+clean multimodality×objective interaction — **the MSE objective's cross-run sd
+nearly triples on multimodal-demonstrator data (2.7 → 7.3) while diffusion's
+barely moves (2.8 → 3.6).** This coheres exactly with the fit-error screen
+(multimodal targets are ~1.6× harder to regress → nastier MSE loss landscape →
+run-to-run instability) and reframes the policy half honestly: *diffusion
+doesn't make the policy better here; it makes it reliable when the demos are
+multimodal.* The variance probe (3613638, queued) tests whether that
+stabilization is sampling-time or training-time.
+
+**Program status:** P0a/P0 CLOSED. One-pager rewritten (both endpoints final).
+Dynamics half is the live bet: slip chain now RUNNING (3613072 finish stage),
+sub-pixel dose running locally, K-step route in Lucas's lane.
+
 **Follow-ups launched (~23:20):**
 - **3613638 variance-mechanism probe:** re-eval the 8 mm05 DP checkpoints under
   sampling variations (eta 1.0, steps 5/50 vs base) via a new
