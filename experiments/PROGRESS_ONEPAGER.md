@@ -89,18 +89,18 @@ which finally has screened-multimodal domains to test on.
 ## Status & next step
 **Closed:** policy side (P0a) — no mean effect, variance interaction confirmed at
 both endpoints; dynamics-on-deterministic-physics negatives — explained.
-**NEW (2026-07-02): the slip verdict falsified the dynamics interaction too.**
-On the fair test (same backbone, same post-hoc budget, 3 seeds × n=100,
-screened-bimodal slip env): diffusion beats MSE dynamics **+6 on bimodal AND
-+10 on the deterministic control** — a real, seed-consistent advantage that is
-*uncorrelated with multimodality*, so it cannot be mode-capture. The strict
-"generative wins iff the conditional is multimodal" law is now dead on BOTH
-sides of this benchmark family. What survives is a two-part reliability story:
-diffusion stabilizes policy training on multimodal demos (variance), and
-diffusion dynamics plan better for reasons orthogonal to stochasticity —
-attribution probe in flight (1-step inference test: iterative-refinement
-compute vs training-objective quality). **Next:** finish the attribution;
-then either the compute-matched comparison (TMSE with iterative readout /
-diffusion at 1 step) becomes the headline methods result, or the K-step /
-H-JEPA level-2 route remains the last venue where a genuine multimodality
-interaction could still appear.
+**RESOLVED (2026-07-02): the dynamics advantage is real, multimodality-
+independent, and fully attributed.** Fair test (same backbone, same post-hoc
+budget, 3 seeds × n=100): diffusion beats MSE dynamics +6 on screened-bimodal
+AND +10 on the deterministic control — not mode-capture. Attribution: the gap
+survives 1-step inference (not iterative-refinement compute), and an x0 cell
+shows **noise-curriculum regression @1 step is the best model of the program
+(78.3/75.3 vs clean-MSE 64.3/65.7)** while DDIM sampling actively hurts it —
+also resolving the old open-loop-anti-ranking puzzle (a sampling penalty).
+**Final claim: every surviving diffusion advantage here is a training-time
+property of the denoising objective — better one-shot dynamics regressors and
+variance-stabilized policies; sampling and multimodality contribute nothing.**
+Full chain: `experiments/2026-07-01_p0a_mechanism_loop.md` (15 iterations).
+**Next arcs (open):** cross-domain test of the noise-curriculum recipe
+(PushT); H-JEPA level-2 proposer cell (last venue for a true multimodality
+effect); P2/JEDI re-rationalized as denoising-as-latent-shaping.

@@ -511,3 +511,48 @@ MSE* — no sampling, no multimodality, no iterative refinement required. Paper
 framing: a deflationary mechanism study with two constructive artifacts (the
 noise-curriculum regressor recipe; the variance-stabilized diffusion policy)
 plus the methodology lesson (controls + seeds kill both naive interactions).
+
+---
+
+## Iteration 15 — 2026-07-02 ~17:30: slip0-x0 confirms — ARC COMPLETE, LOOP CONCLUDES
+
+slip0 x0 cell (job 3618841): @1 step **75.3** (80/73/73), @20 steps 66.7.
+Final dynamics table (3 seeds × n=100 per cell):
+
+| | slip8 (bimodal) | slip0 (deterministic) |
+|---|---|---|
+| **x0 @1 (noise-curriculum regression)** | **78.3** | **75.3** |
+| v @1 | 74.0 | 73.7 |
+| v @20 ("diffusion world model") | 70.3 | 75.7 |
+| x0 @20 | 67.7 | 66.7 |
+| TMSE (clean-input regression) | 64.3 | 65.7 |
+
+## FINAL SYNTHESIS (the whole 2026-06→07 diffusion program)
+
+1. **The strict multimodality law is dead on both sides.** Policy: no mean
+   effect at either dose endpoint (8 seeds × n=100). Dynamics: a real gap that
+   is multimodality-INDEPENDENT (+6 bimodal / +10 deterministic).
+2. **Every surviving diffusion advantage is a TRAINING-TIME property of the
+   denoising objective.** Policy: cross-run variance stabilization on
+   multimodal demos (2.7→7.3 MSE sd vs ~3 DP; sampler-insensitive). Dynamics:
+   noise-curriculum regression trains one-shot predictors +10–14 over
+   clean-input MSE; the v-target is unnecessary (x0 ≥ v); DDIM sampling is
+   neutral-to-HARMFUL (x0: 78→68 going 1→20 steps) — which also resolves the
+   old open-loop-MSE-anti-ranking puzzle (a sampling penalty, not model
+   quality).
+3. **Methodology:** unseeded, control-free comparisons manufactured
+   multimodality "interactions" in BOTH directions during this program; seeds
+   + eval-seed variance + matched controls killed each one. Non-optional.
+4. **Constructive artifacts:** the noise-curriculum one-shot regressor recipe
+   (best dynamics model of the program, deployable without any sampling
+   machinery); the variance-stabilized diffusion policy; the slip env + dose
+   instrumentation; TransformerMSE{Policy,Dynamics} controls; seeded eval
+   harness with position logging.
+
+**Loop concluded** — no defensible next experiment in scope. New-arc
+candidates (Lucas's call): (a) cross-domain test of the noise-curriculum
+recipe (PushT) — turns the recipe into a general claim; (b) H-JEPA rung 2
+(the level-2 `coarse=none` proposer cell remains the one place a genuine
+multimodality effect could still appear); (c) P2/JEDI needs a NEW rationale —
+its premise ("diffusion wins because multimodal dynamics") is invalidated, but
+"denoising as latent-shaping training signal" is a coherent replacement.

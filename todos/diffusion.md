@@ -86,10 +86,13 @@ dynamics).*
       (jobs 3614762/3614763, 3 seeds × n=100, architecture+budget matched):
       diffusion +6 at slip8 **but +10 at the slip0 CONTROL** — the gap is real,
       seed-consistent, and multimodality-INDEPENDENT. **Interaction FALSIFIED.**
-- [ ] **Attribute the multimodality-independent gap** (job 3618231 running):
-      1-step inference probe on the same diffusion checkpoints. Collapse ⇒
-      iterative-refinement compute; survive ⇒ denoising objective trains a
-      better one-shot predictor. Then decide: compute-matched rematch or close.
+- [x] **Attribute the multimodality-independent gap.** DONE 2026-07-02
+      (jobs 3618231 + 3618840/3618841): gap SURVIVES 1-step inference; x0
+      (noise-curriculum regression) @1 step is the program's best dynamics
+      model (78.3/75.3 vs TMSE 64.3/65.7); sampling actively hurts x0.
+      **Mechanism: the denoising objective is a better TRAINING signal —
+      the noise curriculum, not the v-target, not sampling.** ARC CLOSED;
+      loop log iterations 13–15.
 - [x] ~~**Done =** diffusion-dynamics > deterministic on a screened-multimodal
       domain, dose-dependent~~ — NOT achieved; the law fails on the dynamics
       side too. See loop log iteration 12.

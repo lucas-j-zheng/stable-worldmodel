@@ -130,12 +130,16 @@ class SubgoalPolicy(swm.policy.BasePolicy):
         new_goal = np.array(goal)                    # copy, keep dtype/shape
 
         def fit(f, shape):
-            # dataset frames are (H, W, C); env goal may be channel-first
-            if f.shape == tuple(shape):
+            # dataset frames and env goal slots disagree on channel order
+            # (either side may be CHW or HWC) -- try both transposes
+            shape = tuple(shape)
+            if f.shape == shape:
                 return f
-            if f.transpose(2, 0, 1).shape == tuple(shape):
+            if f.transpose(2, 0, 1).shape == shape:      # HWC -> CHW
                 return f.transpose(2, 0, 1)
-            raise ValueError(f'frame {f.shape} vs goal slot {tuple(shape)}')
+            if f.transpose(1, 2, 0).shape == shape:      # CHW -> HWC
+                return f.transpose(1, 2, 0)
+            raise ValueError(f'frame {f.shape} vs goal slot {shape}')
 
         for i, f in enumerate(self._cached):
             flat = new_goal[i]
