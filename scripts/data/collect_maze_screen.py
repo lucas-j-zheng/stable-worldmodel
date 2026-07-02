@@ -33,6 +33,7 @@ def main():
     world = swm.World(
         'swm/OGBMaze-v0',
         num_envs=args.num_envs,
+        add_pixels=False,          # state-only: no rendering, cheap CPU collect
         loco_env_type='point',
         maze_env_type='maze',
         maze_type=args.maze_type,

@@ -108,3 +108,30 @@ so ~0.12 of the sum-cell fraction is dose-independent background (tiny-residual
 noise + non-door structure) and only the **dose-differenced increment ~0.03**
 is door-attributable. The numerical match is partly coincidence. The law gets
 its fair test in E6 (goal-conditioned), where the background should drop out.
+
+### R6 — E7 maze attempt 1 (job 3612584): FAILED (harness, not science)
+
+`World(...)` requires `image_shape` unless `add_pixels=False`; collection died
+at construction, all screen cells skipped on the missing dataset. Fixed
+(`add_pixels=False`, state-only) and resubmitted as **3612832**.
+
+### R7 — E6 goal-conditioned, PARTIAL (mm0 + dp05 landed; p10 contrast pending)
+
+Goal conditioning works as diagnosed in R2: at K=8/none the residual drops
+0.61→0.22 and det_R² rises 0.04→0.59 — most of the R1 `none`-cell signal was
+indeed goal variation. What REMAINS in the goal-conditioned proposer cell
+p(s_{t+K}|s_t,goal) on dp05:
+
+| K | res_ratio | bimodal | gmm2 | gap_ratio | sep(σ) |
+|---|---|---|---|---|---|
+| 1 | 0.027 | 0.385 | 0.668 | 0.692 | 4.5 |
+| 2 | 0.052 | 0.419 | 0.682 | 0.646 | 4.8 |
+| 4 | 0.103 | 0.419 | 0.668 | 0.590 | 4.8 |
+| 8 | 0.222 | 0.484 | 0.668 | 0.487 | 5.7 |
+
+Residual magnitude ~doubles per K-doubling; modes separate further with K
+(gap_ratio 0.69→0.49, sep 4.5→5.7σ). mm0 matches dp05 (K=8/none: 0.451/0.679/
+0.514). Also: `dir` ≈ `sum` (det_R² 0.97–0.99) — ANY executed-action statistic
+that retains direction leaks the route; the action-free proposer is the only
+non-leaking abstraction in a nav domain. **Verdict awaits the p10 cells** (dose
+attribution: door-branching vs residual goal-independent structure).
