@@ -355,3 +355,10 @@ Local venv needed scikit-learn (uv). The diagnostic resolves datasets via
 STABLEWM_HOME (LOCAL_DATASET_DIR alone insufficient). One truncated dataset
 from a killed background task recollected under a fresh name (rm was denied;
 scratchpad self-cleans).
+
+**Iteration 8b (~00:55) — LATENT-space gate PASSES (job 3613073):** slip
+bimodality survives the encoder: latdyn residual_bimodal slip0 0.004 / slip4
+0.758 / slip8 0.935. The dynamics models condition on latents, so this was the
+last could-kill-it check for Route 1 — the branch structure is fully visible in
+the conditioning space the models actually use. Dyncells queued (behind the
+variance probe, now running); verdict evals follow.
