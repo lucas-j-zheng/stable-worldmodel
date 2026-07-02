@@ -242,3 +242,26 @@ persistence) fails the registered threshold ⇒ per pre-registration, the maze
 route requires GOAL-DIRECTED expert data. Given two strikes, second-domain
 effort pivots to the 3-door TwoRoom geometry (E14) + optional OGBench expert
 data later.
+
+### R18 — E14 3-door (job 3614084): construction failed, MECHANISM SURVIVED
+
+Pre-registered prediction FALSIFIED in the informative direction: the center
+door does NOT place a mode at the conditional mean — screen gap_ratio at
+K=8/none is **0.525 (unchanged vs 2-door 0.49)**, because 2-D route positions
+at t+K differ in progress-along-path, not just door coordinate, so the 3-route
+centroid is still off-manifold. And exactly as the unchanged gap predicts, MSE
+precision stayed 0.615 (vs 0.61 on 2-door), coverage 0.045. **The metric chain
+gap_ratio → MSE-deficit held under a falsification attempt; what failed was
+the geometric construction, not the mechanism.** (A true mean-on-mode
+construction would need ~1-D route geometry; diminishing returns — noted as
+future work, not pursued.) Generative heads on 3-door: mdn 0.805 / knn 0.887 /
+diff 0.730 — deficit pattern replicates in a third geometry.
+
+### R19 — E15 latent bench, PARTIAL (mm0_latent only; p10 control timed out)
+
+mse 0.526 / gauss 0.339 / mdn 0.616 / **knn 0.838** / diff **0.000**.
+The MSE-vs-generative gap SURVIVES in the frozen LeWM latent space via the
+nonparametric sampler (−0.31), but parametric heads degrade at 192-d and the
+25-epoch small DDPM fails outright (loss still falling; samples never within
+2δ). Missing: p10_latent control (gpu-debug 1h timeout). → E16 rerun with
+hidden 512 / 75 epochs / gpu partition (job pending).

@@ -309,3 +309,13 @@ Predictions unchanged from E10: E9's signature should reproduce in the frozen
 LeWM latent space; if it VANISHES there, that is an encoder finding
 (route-mode blurring) that redirects the level-2 build to state/goal-relative
 features.
+
+### E16: latent bench round 2 (hjepa_latent_bench2.sbatch)
+
+Fix R19's two gaps: run the p10_latent CONTROL (required before any latent
+dose-contrast claim) and give the parametric heads capacity/time at 192-d
+(hidden 512, 75 epochs, gpu partition, 3h). Pre-registered: (1) p10_latent
+mse≈knn parity; (2) tuned mdn/diff ≥ 0.75 on mm0_latent; if diff stays ~0 the
+small-MLP DDPM is inadequate at 192-d and the paper's latent-space generative
+representatives are kNN/MDN (the law is about objective family, not diffusion
+specifically — already established in R11/R14).

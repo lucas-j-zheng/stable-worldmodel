@@ -83,10 +83,10 @@ class MLP(nn.Module):
 
 
 class MDN(nn.Module):
-    def __init__(self, din, dout, k=5):
+    def __init__(self, din, dout, k=5, hidden=256):
         super().__init__()
         self.k, self.dout = k, dout
-        self.trunk = MLP(din, k * (2 * dout + 1))
+        self.trunk = MLP(din, k * (2 * dout + 1), hidden=hidden)
 
     def forward(self, x):
         o = self.trunk(x)
@@ -117,10 +117,10 @@ class MDN(nn.Module):
 
 
 class DDPM(nn.Module):
-    def __init__(self, din_cond, dout, T=100):
+    def __init__(self, din_cond, dout, T=100, hidden=256):
         super().__init__()
         self.T, self.dout = T, dout
-        self.net = MLP(dout + din_cond + 64, dout)
+        self.net = MLP(dout + din_cond + 64, dout, hidden=hidden)
         t = torch.linspace(0, 1, T + 1)[1:]
         abar = torch.cos((t * 0.99 + 0.008) / 1.008 * np.pi / 2) ** 2
         self.register_buffer('abar', abar.clamp(1e-4, 0.9999))
@@ -163,13 +163,13 @@ class DDPM(nn.Module):
         return x.reshape(B, m, d)
 
 
-def train_head(name, Xtr, Ytr, dev, epochs=25, bs=512):
+def train_head(name, Xtr, Ytr, dev, epochs=25, bs=512, hidden=256):
     din, dout = Xtr.shape[1], Ytr.shape[1]
     if name == 'mse':
-        model, closs = MLP(din, dout).to(dev), \
+        model, closs = MLP(din, dout, hidden=hidden).to(dev), \
             lambda m, x, y: F.mse_loss(m(x), y)
     elif name == 'gauss':
-        net = MLP(din, 2 * dout).to(dev)
+        net = MLP(din, 2 * dout, hidden=hidden).to(dev)
 
         def closs(m, x, y):
             o = m(x)
@@ -177,10 +177,10 @@ def train_head(name, Xtr, Ytr, dev, epochs=25, bs=512):
             return (0.5 * ((y - mu) / logsig.exp()) ** 2 + logsig).sum(-1).mean()
         model = net
     elif name == 'mdn':
-        model = MDN(din, dout).to(dev)
+        model = MDN(din, dout, hidden=hidden).to(dev)
         closs = lambda m, x, y: m.loss(x, y)
     elif name == 'diff':
-        model = DDPM(din, dout).to(dev)
+        model = DDPM(din, dout, hidden=hidden).to(dev)
         closs = lambda m, x, y: m.loss(x, y)
     else:
         raise ValueError(name)
@@ -297,6 +297,7 @@ def main():
     ap.add_argument('--k-emp', type=int, default=64)
     ap.add_argument('--m-samples', type=int, default=32)
     ap.add_argument('--epochs', type=int, default=25)
+    ap.add_argument('--hidden', type=int, default=256)
     ap.add_argument('--seed', type=int, default=0)
     ap.add_argument('--out', default=None)
     args = ap.parse_args()
@@ -353,7 +354,8 @@ def main():
         print(f'[bench] === {name} ===')
         model = None
         if name not in ('knn',):
-            model = train_head(name, Xtrn, Ytrn, dev, epochs=args.epochs)
+            model = train_head(name, Xtrn, Ytrn, dev, epochs=args.epochs,
+                               hidden=args.hidden)
         S = head_samples(name, model, Xvan[anchors], args.m_samples, dev,
                          tree=tree_tr, Ytr_all=Ytrn, Xq=Xvaq[anchors])
         mean_pred = S.mean(1)
