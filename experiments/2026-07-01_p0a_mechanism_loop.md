@@ -362,3 +362,27 @@ bimodality survives the encoder: latdyn residual_bimodal slip0 0.004 / slip4
 last could-kill-it check for Route 1 — the branch structure is fully visible in
 the conditioning space the models actually use. Dyncells queued (behind the
 variance probe, now running); verdict evals follow.
+
+---
+
+## Iteration 9 — 2026-07-02 ~01:10: variance probe — stabilization is TRAINING-TIME (job 3613638)
+
+Re-eval of the 8 seeded mm05 DP checkpoints under sampling variations
+(single eval seed 42, n=50):
+
+| config | mean | cross-seed sd |
+|---|---|---|
+| base (eta 0, steps 20) | 36.3 | 5.4 |
+| eta 1.0 (ancestral)    | 39.5 | 3.2 |
+| steps 5                | 35.8 | 4.7 |
+| steps 50               | 37.3 | 4.4 |
+
+**Read:** cross-seed sd stays 3–5 under EVERY sampling regime — ancestral noise
+and coarse DDIM included — never approaching TMSE's 7.3. Caveat: with n=50
+single-eval binomial noise (~±7/cell), differences BETWEEN configs are not
+resolvable; the defensible statement is that the DP stability is insensitive to
+the sampler. **Framing for the writeup: the variance stabilization on
+multimodal demos is a property of the denoising TRAINING OBJECTIVE (loss
+landscape), not of test-time sampling.** Coheres with fit-error (mm targets
+corrupt the MSE landscape; the denoising objective spreads the target over
+noise levels and escapes that). Probe CLOSED.
