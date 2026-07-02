@@ -167,3 +167,63 @@ If its conditional is dose-dependently bimodal with a deep mean-gap, the MSE
 proposer demonstrably proposes infeasible subgoals exactly when the demonstrator
 was multimodal — the strict thesis, measured at the conditional the level-2
 model will actually be trained on (conditioning-matched, per B2).
+
+### E7: second domain — point-maze random-walk K-step screen (hjepa_maze_screen.sbatch)
+
+**What.** Collect 3000 eps × T=64 state-only random-walk point-maze (medium),
+screen K∈{1,2,4,8,16} × {full,sum,none}.
+
+**Why now, not gated on E6.** Needed under EITHER E6 outcome: it is the
+escalation path if TwoRoom dies, and the paper's second domain if TwoRoom
+lives (PushT died in R4). Random-walk maze data is the cleanest reachability
+screen: no goal confound (no goal-directed policy), no demonstrator-preference
+confound (uniform coverage), branching = pure wall geometry.
+
+**Pre-registered.** (1) `full` composed-determinism control holds. (2) `none`
+rises with K, ≥0.2 by K=8–16 if junction spacing is within random-walk reach.
+(3) gap_ratio small in branched cells. (4) Known risk: random walk too slow to
+reach junctions in K≤16 → unimodal local diffusion; remedy is longer K /
+action-repeat, not a kill.
+
+### E8: aux screens (hjepa_aux_screens.sbatch)
+
+**(a) Policy-puzzle retro-test.** The 06-30 "matched conditional is unimodal"
+verdict used Sarle BC — blind to soft modes (the design doc's own §6
+hypothesis). gmm2_frac has soft-mode power (R0: trimodal 0.952 vs BC 0.730).
+Re-run the conditioning-matched policy_goal screen on mm0_latent vs p10_latent.
+Pre-registered: soft modes real ⇒ gmm2(mm0) − gmm2(p10) > 0.1 while BC stays
+~0.006 for both; gmm2 also equal/floor ⇒ hypothesis (a) of the puzzle is dead
+and the +10 mechanism is training-time corruption or calibration, not hidden
+conditional multimodality of any softness.
+
+**(b) Seed calibration.** K=8 decision cells at seeds 1,2 → run-to-run σ of
+bimodal_frac, needed to judge dose deltas (0.155 vs 0.124) against noise.
+
+---
+
+## Cross-track event — 2026-07-01 ~21:00 (parallel P0a loop, same repo)
+
+The P0a loop (2026-07-01_p0a_mechanism_loop.md) landed two thesis-level results:
+**(1) the +10 policy win does NOT replicate under real seeding** (mm05: DP 35.7
+vs TMSE 36.0, 3 seeds × n=100; TMSE cross-run sd ~10 — the banked +10 was most
+plausibly noise on a high-variance baseline); **(2) the seeded p10 endpoint
+shows DP +5 at the UNIMODAL dose** — no multimodality×objective interaction.
+
+**Implications for this loop.**
+- The project now has ZERO robust positive diffusion-vs-MSE cells. The design
+  doc's "proven policy win lifted to level 2" framing is dead empirically, not
+  just methodologically (review B2 anticipated this direction).
+- E6 is now THE load-bearing experiment of the whole program: a dose-dependent,
+  hard-separated, conditioning-matched multimodal conditional at level 2 would
+  be the FIRST such cell in the project — and rung 3 on it the first fair test
+  of the law. If E6 fails: TwoRoom out → maze (E7, running) → paper pivots
+  toward "rigorous negative + predictive screen methodology".
+- Note their "K-step greenlit" reading (iteration 4) predates R2's goal-confound
+  discovery — the correct current verdict is outcome 3 + B10 (goal-conditioned
+  re-screen pending), logged in HJEPA_RESULTS.md R1/R2.
+- **Caveat for the other track's slip env (P1 Route 1):** slip modes are
+  per-step ALEATORIC (nature's coin, not the planner's choice). Review B1 /
+  design §2: even if the slip screen passes, a diffusion dynamics model gets no
+  MODE-SELECTION edge there — only a sample-hungry expectation-recovery edge,
+  plus possibly nonlinear-reward bias effects. A screen PASS on slip does not
+  predict a planning win; route-structure multimodality (this track) does.
