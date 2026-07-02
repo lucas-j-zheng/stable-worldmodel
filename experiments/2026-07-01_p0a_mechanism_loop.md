@@ -216,6 +216,38 @@ Thesis prediction: diffusion > TMSE at slip8 (deterministic averages the two
 slip branches), tie at slip0. If BOTH tie, the dynamics half fails even on
 screened-multimodal dynamics — a much stronger negative than the old one.
 
+---
+
+## Iteration 5 — 2026-07-01 ~22:20: SLIP SCREEN PASSES (with a timeout + a control flaw)
+
+**Result 6 — slip dose screen (3612481, TIMEOUT at 1h during slip8 collection):**
+
+| slip_scale | hidden residual_bimodal |
+|---|---|
+| 0 | 0.114 (unimodal floor) |
+| 2 | 0.975 |
+| 4 | 0.987 |
+| 8 | (dataset truncated — recollecting) |
+
+**The intrinsic slip env delivers exactly the designed multimodality: pervasive,
+hard, dose-gated bimodal dynamics** (0.11 → 0.98 the moment the coin exists;
+saturates immediately since the ±S separation dwarfs the kNN floor — a graded
+dose would need sub-pixel S, not needed for the verdict cells). This is the
+multimodal-DYNAMICS domain the whole program lacked — where hidden-doors
+(det_R² 0.966) and hidden-drift (~1%, shrinking) failed.
+
+**Two flaws found & handled:**
+1. *Timeout:* 4×4000-episode collections don't fit gpu-debug's 1h. The chained
+   dependents were auto-cancelled (afterok on TIMEOUT). Rebuilt.
+2. *Observed control off-by-one:* `slip_state` on row t is the slip that
+   produced state_t; the screened transition (state_t, a_t)→state_{t+1} needs
+   row t+1's slip, so "observed" read the same as "hidden" (0.99). Not fixed
+   tonight — the slip0-vs-slipN dose is the unambiguous control.
+
+**Relaunched chain:** finish/recollect slip8 **3613072** → cache **3613073**
+(gated) → dyncells **3613074** (slip8) / **3613075** (slip0) → closed-loop
+D-MPC verdicts **3613076** / **3613077**. Runs unattended overnight.
+
 **P0a verdict taking shape:** no reliable policy-side objective effect; the
 banked +10 was noise on a high-variance baseline measured with a
 variance-hiding eval design. Final call when seeds 4–8 land — then P0/P0a close
