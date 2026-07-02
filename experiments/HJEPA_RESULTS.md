@@ -211,3 +211,34 @@ Seed σ(bimodal_frac) ≈ 0.005 (dp05 K8/none: .916/.918/.923; gap_ratio .033–
 (decorrelated): none 0.859 vs 0.918 (−6%), sum 0.164 vs 0.135 (+21%) — inside
 the registered ±30%. Coarseness dial at K=8 perfectly monotone:
 full .059 < sum .135 ≈ sumhalf .138 < dir .233 < none .918.
+
+### R14 — E13 K-sweep + dose curve (job 3613634): **the central figure holds**
+
+MSE precision (deficit vs MDN in parens), mm0 K-sweep:
+K=4 0.83 (−0.01) → K=8 0.61 (−0.24) → K=16 0.48 (−0.35). Deficit GROWS with K
+exactly as the screen's residual/separation growth predicts ✓ (registered).
+Dose curve at K=8, MSE precision: mm0 0.61 < p07 0.67 < p09 0.76 < p10 0.86 —
+perfectly monotone in door_prob; deficit vs MDN: 0.24 → 0.13 → 0.07 → 0.02 ✓.
+knn/mdn flat (0.80–0.92) across all cells ✓. **The screen quantitatively
+predicts where and how much the MSE proposer loses.**
+
+### R15 — E12 seeds (job 3613348): the gap REPLICATES
+
+mm0 K=8 MSE-vs-MDN precision gap across torch seeds {0,1,2}: 0.24/0.22/0.26
+(±0.02, registered ±0.05 ✓); p10 parity stable (0.02/0.01/−0.04). Unlike the
++10, this result is seed-stable.
+
+### R16 — E10 latent bench: FAILED on missing goal column (harness)
+
+Latent-cached datasets carry no goal_state. Fix: `--goal-from final`
+(destination conditioning, validated by policy_target). Retry queued (E15).
+
+### R17 — E11 persistent-walk maze (job 3613349): still no hard modes
+
+Hold-4 walk, T=128: `none` res_ratio grows 0.042→0.121 (K=4→32) but
+bimodal ≤0.06, gmm2 ≤0.31, gap ~0.55 — occupancy fills corridors smoothly
+rather than splitting into separated route modes. Random exploration (any
+persistence) fails the registered threshold ⇒ per pre-registration, the maze
+route requires GOAL-DIRECTED expert data. Given two strikes, second-domain
+effort pivots to the 3-door TwoRoom geometry (E14) + optional OGBench expert
+data later.

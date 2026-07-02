@@ -39,12 +39,18 @@ GOAL_CANDS = ('goal_state', 'variation_target_position', 'goal',
               'target_position', 'goal_pos')
 
 
-def build_pairs(ds, horizon, scol='state'):
+def build_pairs(ds, horizon, scol='state', goal_from='auto'):
+    """goal_from='auto': use a goal column; 'final': use the episode's final
+    STATE as the goal (destination conditioning, as validated by the
+    policy_target screen) -- needed for latent-cached datasets that carry
+    state/latent/action but no goal column."""
     present = set(ds.column_names)
     gcol = next((c for c in GOAL_CANDS if c in present), None)
-    if scol not in present or gcol is None:
+    use_final = goal_from == 'final' or gcol is None
+    fin_col = 'state' if 'state' in present else scol
+    if scol not in present or (use_final and fin_col not in present):
         raise SystemExit(f'need {scol}+goal col; have {sorted(present)}')
-    print(f'[bench] goal col = {gcol}')
+    print(f'[bench] goal = {"final " + fin_col if use_final else gcol}')
     eps = []
     for ep in range(len(ds.lengths)):
         T = int(ds.lengths[ep])
@@ -52,7 +58,11 @@ def build_pairs(ds, horizon, scol='state'):
             continue
         d = ds.load_episode(ep)
         s = np.asarray(d[scol], np.float32).reshape(T, -1)
-        g = np.asarray(d[gcol], np.float32).reshape(T, -1)
+        if use_final:
+            fin = np.asarray(d[fin_col], np.float32).reshape(T, -1)[-1]
+            g = np.repeat(fin[None], T, 0)
+        else:
+            g = np.asarray(d[gcol], np.float32).reshape(T, -1)
         cond = np.concatenate([s[:T - horizon], g[:T - horizon]], 1)
         eps.append((cond, s[horizon:]))
     return eps
@@ -278,6 +288,8 @@ def main():
     ap.add_argument('--dataset', required=True)
     ap.add_argument('--state-col', default='state',
                     help='column used as state/target (e.g. latent)')
+    ap.add_argument('--goal-from', default='auto', choices=['auto', 'final'],
+                    help='auto: goal column; final: episode final state')
     ap.add_argument('--horizon', type=int, default=8)
     ap.add_argument('--heads', nargs='+',
                     default=['mse', 'gauss', 'mdn', 'knn', 'diff'])
@@ -296,7 +308,8 @@ def main():
 
     import stable_worldmodel as swm
     ds = swm.data.load_dataset(args.dataset)
-    eps = build_pairs(ds, args.horizon, scol=args.state_col)
+    eps = build_pairs(ds, args.horizon, scol=args.state_col,
+                      goal_from=args.goal_from)
     rng = np.random.default_rng(args.seed)
     order = rng.permutation(len(eps))
     n_val = max(1, len(eps) // 10)

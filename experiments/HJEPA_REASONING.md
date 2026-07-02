@@ -283,3 +283,29 @@ deficit monotone in dose; knn/mdn flat. Follow-ups queued behind results:
 mini rung-5 closed-loop proposer planning (+level-1 competence gate first),
 rung-4 SIGReg Pareto, trimodal (3-door) falsification test of gap_ratio,
 per-anchor gap-vs-precision mechanism figure.
+
+---
+
+## Cycle 4 — 2026-07-02
+
+### E14: 3-door trimodal falsification test (hjepa_3door_latent.sbatch)
+
+The sharpest test the mechanism claim allows. 3 doors {40, 112(center), 184},
+expert uniform among fitting doors. By symmetry, at route-ambiguous anchors the
+conditional mean ≈ the center-route mode — a REAL mode.
+
+**Pre-registered.** (1) screen: gmm2 ≥ 0.6 (≥2-door multimodality) but
+gap_ratio median > 0.7 (vs 0.49 on 2-door); (2) bench: MSE precision recovers
+to ≥ 0.75 (vs 0.61) despite the multimodality; (3) MSE mode_coverage stays
+~1/3 — precision and coverage DISSOCIATE (feasible mean, no menu).
+**Falsified if** MSE precision stays ~0.6 → the deficit is about multimodality
+generally and gap_ratio is not the operative mechanism.
+
+### E15: latent bench retry with --goal-from final
+
+Latent datasets lack goal columns; destination conditioning (episode final
+state) is the conditioning-matched substitute (policy_target-validated).
+Predictions unchanged from E10: E9's signature should reproduce in the frozen
+LeWM latent space; if it VANISHES there, that is an encoder finding
+(route-mode blurring) that redirects the level-2 build to state/goal-relative
+features.

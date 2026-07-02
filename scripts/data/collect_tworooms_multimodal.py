@@ -42,14 +42,20 @@ def run(cfg):
     )
 
     rng = np.random.default_rng(cfg.seed)
-    # Fixed 2-door symmetric geometry (about the vertical wall ~y=112); random
-    # agent/target each episode. Both doors fit (size 14 half-extent >> 1.1*radius
+    # Fixed symmetric door geometry (about the vertical wall ~y=112); random
+    # agent/target each episode. All doors fit (size 14 half-extent >> 1.1*radius
     # with radius=7), so the expert genuinely chooses between them.
+    # n_doors=3 adds a CENTER door at 112: the trimodal falsification test of
+    # the mean-in-gap mechanism (H-JEPA review E14) -- with a center route the
+    # conditional mean lies ON a real mode, so MSE should NOT be punished
+    # despite >=2-door multimodality. (Expert commits uniformly among >2 doors.)
+    n_doors = int(cfg.get('n_doors', 2))
+    positions = {2: [60, 164, 49], 3: [40, 112, 184]}[n_doors]
     options = {
         'variation': ['agent.position', 'target.position'],
         'variation_values': {
-            'door.number': 2,
-            'door.position': [60, 164, 49],
+            'door.number': n_doors,
+            'door.position': positions,
             'door.size': [14, 14, 14],
         },
     }
