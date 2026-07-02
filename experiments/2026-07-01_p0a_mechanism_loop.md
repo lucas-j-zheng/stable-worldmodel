@@ -101,9 +101,80 @@ consistent with the null: no test-time multimodality AND no gap.
 - p10 cell (3611840) + fit-error (3611948) still queued on CPU quota; K-step
   screen (3611937) still running.
 
+> **Iteration 3 (~20:15): Oscar unreachable** — ssh key auth falling back to
+> keyboard-interactive (VPN outage pattern, same as 06-22). Jobs unaffected,
+> visibility lost; loop idles on heartbeat until connectivity returns.
+
 **Decision rule for next iteration:** if seeds 1–8 confirm DP≈TMSE at mm05 AND
 p10 shows the same, the policy half of the thesis is DEAD as an objective effect
 (architecture explains everything) → write the honest negative, close P0a/P0,
 and move the loop's weight to P1 (multimodal DYNAMICS: K-step screen verdict →
 Route 2 build, else Route 1 slip env). If the extension REOPENS a gap (seeds 1–3
 unlucky), P0a continues with the fit-error + eval-conditioning screens.
+
+---
+
+## Iteration 4 — 2026-07-01 ~21:30: p10 + fit-error + K-step landed (during a
+VPN outage ~20:00–21:20); slip env built + screening
+
+**Result 3 — seeded p10 (unimodal) endpoint (job 3611840):**
+
+| train seed | DP (es42/es123) | TMSE (es42/es123) |
+|---|---|---|
+| 1 | 44 / 30 | 38 / 24 |
+| 2 | 38 / 26 | 34 / 18 |
+| 3 | 40 / 30 | 40 / 24 |
+| **mean** | **34.7** | **29.7** |
+
+**DP−TMSE = +5 at the UNIMODAL endpoint** vs ≈0 at the multimodal one — the
+dose-response is not just gone, it points the wrong way. Taken with mm05, the
+seeded 2×2 shows **no multimodality×objective interaction**; any residual DP
+edge (~+2–3 pooled) is within noise. Side finding: eval-seed 123 is ~12 pts
+harder than 42 for every model — episode-sampling variance is as big as the
+claimed effect, vindicating the two-eval-seed design (the old fixed-seed-42
+evals hid this term entirely).
+
+**Result 4 — fit-error / smoothing screen (job 3611948, old checkpoints):**
+TMSE val error mm05 0.39–0.43 vs p10 0.22–0.27 (~1.6×); DP sample-vs-demo
+distance mm05 ~0.95–1.03 vs p10 ~0.47–0.56 (~2×); train≈val everywhere (no
+overfit gap). **Multimodal-demonstrator data IS genuinely harder to regress**
+(residual heterogeneity in the targets is real, consistent with the
+policy_target screen's 0.49 residual_ratio) — **but this fit-level corruption
+does not surface as a closed-loop success gap.** Plausible reconciliation:
+receding-horizon replanning (every 5 steps) forgives locally-averaged action
+chunks; the task's failure modes (budget exhaustion far from goal, per the
+position probe) are not mode-confusion failures.
+
+**Result 5 — H-JEPA K-step screen (job 3611937): GREENLIGHT.**
+
+| K | coarse=full (ctrl) | coarse=sum | coarse=none (proposer) |
+|---|---|---|---|
+| 1 | 0.266 | 0.266 | 0.956 |
+| 2 | 0.047 | 0.061 | 0.941 |
+| 4 | 0.048 | 0.095 | 0.932 |
+| 8 | 0.059 | **0.135** | 0.918 |
+
+Exactly the greenlight signature from the review doc: `full` flat/low (K≥2),
+`sum` rises monotonically to 0.135 at K=8 (predicted ~0.10), proposer cell
+massively bimodal. **Temporal abstraction DOES create measurable multimodal
+dynamics where 1-step had none** — P1 Route 2 is open. (K=1 full/sum at 0.266
+is an oddity worth a look — likely the K=1 conditioning quirk or small-sample;
+does not affect the verdict.) H-JEPA execution stays in Lucas's lane (his
+hjepa-dose-latent / hjepa-pusht-kstep jobs ran tonight); this loop feeds it.
+
+**Launched:**
+- **P1 Route 1 slip env, built + screening (job 3612481).** `TwoRoomEnv` gains
+  `slip_scale`: every step, a fair coin displaces the agent ±slip_scale along
+  the along-wall axis before collisions → p(next|state,action) is a two-point
+  mixture on every step, per-step coin so NO conditioning resolves it (unlike
+  drift), interior-axis choice to dodge the drift experiment's clamp-absorption
+  failure. `collect_tworooms_slip.py` + `slip_dose_screen.sbatch`: collect+screen
+  S ∈ {0,2,4,8}, hidden vs observed(slip_state) contrast. PASS = hidden bimodal
+  rises with S while observed stays ~0.
+- mm05 seeds 4–8 extension (3611999) still running.
+
+**P0a verdict taking shape:** no reliable policy-side objective effect; the
+banked +10 was noise on a high-variance baseline measured with a
+variance-hiding eval design. Final call when seeds 4–8 land — then P0/P0a close
+and the program's weight moves to P1 (slip + K-step routes, both now gated
+open/1 screening).

@@ -36,6 +36,7 @@ class TwoRoomEnv(gym.Env):
         render_target: bool = False,
         init_value: dict | None = None,
         drift_scale: float = 0.0,
+        slip_scale: float = 0.0,
     ):
         assert render_mode in self.metadata['render_modes']
         self.render_mode = render_mode
@@ -47,6 +48,17 @@ class TwoRoomEnv(gym.Env):
         # EVERY step. See _get_info's `drift_state` and reset().
         self.drift_scale = float(drift_scale)
         self.drift = torch.zeros(2, dtype=torch.float32)
+        # INTRINSIC stochastic "slip" for the multimodal-DYNAMICS experiment
+        # (P1 Route 1). slip_scale=0 (default) -> byte-identical to the old env.
+        # When >0, EVERY step draws a fair coin and displaces the agent by
+        # +-slip_scale along the along-wall axis BEFORE collision handling, so
+        # p(next | state, action) is a two-point mixture separated by
+        # 2*slip_scale on every step — aleatoric, not partial observability.
+        # Unlike drift (per-episode constant, resolvable from history), the coin
+        # is per-step: no conditioning can resolve it. `slip_state` in info
+        # records the realized slip for observed-vs-hidden screen contrasts.
+        self.slip_scale = float(slip_scale)
+        self.last_slip = torch.zeros(2, dtype=torch.float32)
 
         # Precompute coordinate grids once (H,W)
         y = torch.arange(self.IMG_SIZE, dtype=torch.float32)
@@ -251,6 +263,7 @@ class TwoRoomEnv(gym.Env):
             )
         else:
             self.drift = torch.zeros(2, dtype=torch.float32)
+        self.last_slip = torch.zeros(2, dtype=torch.float32)
 
         swm_spaces.reset_variation_space(
             self.variation_space, seed, options, DEFAULT_VARIATIONS
@@ -286,6 +299,16 @@ class TwoRoomEnv(gym.Env):
         # Hidden drift is added BEFORE collision handling, so it acts in free
         # space (the common case) and is clamped only at walls/borders.
         pos_next = self.agent_position + action_t * speed + self.drift
+        if self.slip_scale > 0.0:
+            # Per-step fair coin, displacement along the along-wall axis (the
+            # axis doors vary along) so outer borders, not the wall band, are
+            # the only clamp — minimizes variance absorption (the drift
+            # experiment's failure mode).
+            sign = 1.0 if self.np_random.random() < 0.5 else -1.0
+            slip = torch.zeros(2, dtype=torch.float32)
+            slip[self.wall_axis] = sign * self.slip_scale
+            self.last_slip = slip
+            pos_next = pos_next + slip
 
         pos_new = self._apply_collisions(self.agent_position, pos_next)
         self.agent_position = pos_new
@@ -389,6 +412,9 @@ class TwoRoomEnv(gym.Env):
             # The hidden drift, recorded so the screen can condition on it
             # (observed) vs not (the POMDP) -- the with/without-drift contrast.
             'drift_state': self.drift.detach().cpu().numpy(),
+            # The realized per-step slip (P1 Route 1), same observed-vs-hidden
+            # contrast: conditioning on it must kill the bimodality (control).
+            'slip_state': self.last_slip.detach().cpu().numpy(),
         }
 
     # ---------------- Rendering ----------------
