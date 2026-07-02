@@ -227,3 +227,49 @@ shows DP +5 at the UNIMODAL dose** — no multimodality×objective interaction.
   MODE-SELECTION edge there — only a sample-hungry expectation-recovery edge,
   plus possibly nonlinear-reward bias effects. A screen PASS on slip does not
   predict a planning win; route-structure multimodality (this track) does.
+
+---
+
+## Cycle 3 — 2026-07-01 (after E6 verdict)
+
+### E6 VERDICT: GREENLIGHT — dose restored under goal conditioning
+
+K=8/none, mm0 vs p10: res_ratio 0.225 vs 0.050 (4.5×, ≥2× required ✓),
+bimodal 0.451 vs 0.126 (Δ0.33 > 0.10 required ✓), gap 0.51 vs 0.86, sep 5.2σ
+vs 2.8σ. Predictions 1–2 met; 3 partially (median gap 0.49 vs predicted <0.3 —
+a mixture of deep-gap and shallow anchors, not uniformly deep). The
+goal-conditioned action-free proposer conditional is the FIRST conditional in
+this project that is (i) multimodal under matched conditioning, (ii)
+dose-dependent, (iii) hard-separated, (iv) planner-relevant. Also learned:
+`dir`≈`sum` — any executed-action statistic retaining direction leaks the
+route; in nav domains the only non-leaking abstraction is action-free.
+
+### E9: RUNG 3 — proposer bench (scripts/train/proposer_bench.py)
+
+**What.** Small heads, same data, same conditioning as the screen:
+MSE / Gaussian-NLL / MDN(5) / kNN-retrieval / conditional-DDPM on
+p(s_{t+8}|s_t,goal); episode-level split; per-anchor distributional eval vs the
+held-out empirical conditional (energy distance, precision, 2-mode coverage,
+mean-gap in delta units). Datasets mm0, p10 (dose contrast), dp05 (replication).
+
+**Why state-space first.** Mirrors the screened conditional exactly (no encoder
+confound), runs in minutes, and after the +10 collapse the project needs its
+first clean det-vs-generative gap measurement at MINIMUM cost before any
+latent/level-2 build. Latent-space version (E10) follows only if E9 shows the
+gap.
+
+**Pre-registered predictions.**
+1. mm0: MSE precision LOW / meangap HIGH; mdn/knn/diff precision HIGH,
+   meangap LOW (the mechanism, now at model level).
+2. p10: parity across heads — the unimodal control (seeded-2×2 lesson).
+3. mdn ≈ knn ≈ diff on mm0 (2 hard modes — any multimodal head suffices;
+   diffusion not special). If diff ≫ mdn/knn something is off — investigate
+   before believing it.
+4. gauss ≈ mse (calibration alone doesn't fix mode-averaging).
+5. mode_coverage: generative > 0.8; mse ≈ 0.5.
+
+**Decision rule.** Predictions 1+2 confirmed ⇒ the strict thesis holds at the
+proposer level ⇒ E10 latent bench + rung-4/5 build. 1 fails (MSE precision
+fine) ⇒ the modes, though present, are too shallow to hurt the mean — measure
+gap-depth vs precision relation, rethink. 2 fails (gap on p10 too) ⇒ eval bug
+or leakage — audit before anything else.

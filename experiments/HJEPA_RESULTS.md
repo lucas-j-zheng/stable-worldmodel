@@ -135,3 +135,28 @@ Residual magnitude ~doubles per K-doubling; modes separate further with K
 that retains direction leaks the route; the action-free proposer is the only
 non-leaking abstraction in a nav domain. **Verdict awaits the p10 cells** (dose
 attribution: door-branching vs residual goal-independent structure).
+
+### R8 — E6 COMPLETE (job 3612480): GREENLIGHT, dose restored
+
+The p10 contrast landed. K=8/`none` (goal-conditioned proposer conditional):
+
+| | mm0 (multimodal demos) | p10 (unimodal demos) | ratio/Δ |
+|---|---|---|---|
+| residual_ratio | **0.225** | 0.050 | 4.5× (≥2× req. ✓) |
+| bimodal_frac | **0.451** | 0.126 | Δ0.33 (>0.10 req. ✓) |
+| gmm2_frac | 0.679 | 0.383 | |
+| gap_ratio | 0.514 | 0.856 | deep-vs-none ✓ dir. |
+| separation | 5.2σ | 2.8σ | |
+
+**p(s_{t+K}|s_t,goal) is the project's first conditional that is multimodal
+under matched conditioning, dose-dependent, hard-separated, and
+planner-relevant.** Gap_ratio median 0.51 (not <0.3 as registered — anchors are
+a mixture of deep-gap and shallow; per-anchor gap distribution worth plotting
+for the paper). K-scaling on dp05: residual doubles per K-doubling, separation
+grows 4.5→5.7σ. RUNG 3 UNLOCKED → E9 (job 3612901).
+
+### R9 — E7 maze attempt 2 (3612832): collection OK, screens skipped
+
+3000 eps collected in ~3 min (state-only). Column is `observation`, not
+`state` — all cells skipped. Attempt 3 (3612881) runs screens with
+`--target-col observation`; collection skipped (dataset cached).
