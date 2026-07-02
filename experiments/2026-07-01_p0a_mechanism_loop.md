@@ -415,3 +415,41 @@ HOLD the headline until the slip0 CONTROL (3614763, running) reads: tie there
 ⇒ first confirmed multimodality×objective interaction on the DYNAMICS side
 (the thesis's missing half, on its fair architecture-matched, budget-matched
 test); +6 there ⇒ artifact, back to the drawing board.
+
+---
+
+## Iteration 12 — 2026-07-02 ~12:30: SLIP0 CONTROL BREAKS THE INTERACTION — the gap is multimodality-INDEPENDENT
+
+slip0 control (job 3614763), same protocol as slip8:
+
+| | slip8 (bimodal dynamics) | slip0 (deterministic control) |
+|---|---|---|
+| Diffusion dynamics | 70.3 (69/69/73) | **75.7** (76/77/74) |
+| TMSE dynamics | 64.3 (61/64/68) | **65.7** (66/66/65) |
+| **gap** | **+6** | **+10** |
+
+**The registered prediction (win at slip8, tie at slip0) is FALSIFIED.** The
+diffusion-dynamics advantage is real, consistent, and *larger on deterministic
+dynamics* — it cannot be mode-capture. Had we only run slip8 (the "obvious"
+experiment), we'd have banked a spurious dynamics-side multimodality win —
+the same trap the policy side fell into pre-seeding. The control saved the
+program twice now.
+
+**What the whole 2×2×2 (policy/dynamics × mm/uni × diff/MSE) says:** the strict
+thesis — *generative beats deterministic iff the modeled conditional is
+multimodal* — is dead on BOTH sides of this benchmark family. What survives:
+1. **Policy:** no mean effect; diffusion = cross-run VARIANCE stabilizer on
+   multimodal demos (training-time property).
+2. **Dynamics:** a consistent +6..+10 diffusion advantage UNCORRELATED with
+   multimodality. Prime suspect: **inference-time compute** — 20 DDIM
+   refinement passes per prediction vs TMSE's single forward — or CEM
+   benefiting from sampling diversity.
+3. **Methods:** unseeded, single-condition comparisons manufacture
+   "multimodality interactions" in either direction at will. Controls +
+   seeds + eval-seed variance are not optional.
+
+**Launched: 3618231 — 1-step inference probe.** Same 6 diffusion checkpoints,
+`num_inference_steps=1` (v-param single-step readout ≈ one forward), both
+cells. Gap collapses ⇒ iterative-refinement compute is the advantage; gap
+survives ⇒ the denoising objective trains a genuinely better one-shot
+predictor (training-time, mirroring the policy variance story).
