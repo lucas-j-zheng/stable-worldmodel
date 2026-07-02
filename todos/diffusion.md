@@ -19,12 +19,11 @@ checkpoints/data; no retraining except the seeded reruns.*
       seeded-cell npz's): **NO mode-averaging signature** — TMSE failures at the
       wall-between-doors 10–14% ≈ DP 9–11%; both mostly fail "elsewhere"
       (~50 px short of goal). Candidate (a) unsupported behaviorally.
-- [ ] **Smoothing test (candidate a).** Compare TMSE per-sample train/val MSE on
-      mm0 vs p10 (length-matched by construction). Substantially higher irreducible
-      fit error on mm0 ⇒ the corruption happens at TRAINING time: the network can't
-      separate neighboring (history, goal) bins whose demos took different doors, so
-      its function class averages across them — even though each exact bin is
-      unimodal (consistent with the 0.006 matched screen).
+- [x] **Smoothing test (candidate a).** DONE 2026-07-01 (`policy_fit_error.py`,
+      job 3611948): TMSE regresses mm05 ~1.6× worse than p10 (real target
+      heterogeneity, train≈val) — but with the seeded closed-loop gap ≈ 0 the
+      fit-level corruption is behaviorally inconsequential. Candidate (a) exists
+      at the regression level, explains nothing closed-loop.
 - [ ] **Train/eval goal-mismatch check (candidate b).** Re-run the matched screen
       with EVAL-time conditioning — goals synthesized exactly as the solver forms
       them (`diffusion_policy_solver.py:64`), not demo latents. If the eval-time
@@ -73,12 +72,15 @@ the thesis becomes symmetric (wins on BOTH multimodal policy AND multimodal
 dynamics).*
 
 ### Route 1 — intrinsic stochastic transitions (bimodal "slip")
-- [ ] **Design the slip env:** TwoRoom variant where an action (e.g. near the
-      wall) produces one of two discrete outcomes — a bimodal transition — with
-      the slip probability as the dose knob playing door_prob's role.
+- [x] **Design the slip env.** DONE 2026-07-01: `TwoRoomEnv(slip_scale=...)` —
+      per-STEP fair coin, ±slip_scale along the along-wall axis before
+      collisions (no conditioning resolves it; axis chosen to dodge the drift
+      clamp-absorption failure). `slip_state` recorded for the observed control.
 - [ ] **Screen FIRST** (`multimodality_diagnostic.py --mode dynamics`): confirm
       `residual_bimodal_frac` of `p(z'|z,a)` actually rises with the knob before
       training anything. (Standing rule: no diffusion run without a passing screen.)
+      → *RUNNING 2026-07-01: `slip_dose_screen.sbatch` job 3612481, S∈{0,2,4,8},
+      hidden vs observed contrast.*
 - [ ] **Diffusion-dynamics vs deterministic D-MPC** (CEM) across the dose.
       Prediction: deterministic predictor smears across the two outcomes ->
       diffusion finally wins closed-loop, gap tracks the knob.
