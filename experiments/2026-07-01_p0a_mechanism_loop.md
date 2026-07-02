@@ -386,3 +386,10 @@ multimodal demos is a property of the denoising TRAINING OBJECTIVE (loss
 landscape), not of test-time sampling.** Coheres with fit-error (mm targets
 corrupt the MSE landscape; the denoising objective spreads the target over
 noise levels and escapes that). Probe CLOSED.
+
+**Iteration 10 (~01:45) — budget fix:** slip dynamics trainings pace at ~90
+min/model at EP=250 (627 steps/epoch — the slip data is ~20× the policy latent
+sets), so 6 models ≫ the 6h limit. Cancelled 3613074/75/76/77 preemptively and
+rechained with **EP=100** (63k steps/model — the seeded policy models that
+produced clean results saw 500 steps total): dyncells **3614760** (slip8) /
+**3614761** (slip0) → verdicts **3614762** / **3614763**. ~3.6h/cell, fits.
