@@ -286,3 +286,10 @@ per pre-registration, latent generative representatives are MDN/kNN.
 0.924) — the wrong-head cost runs BOTH directions; the screen is a
 head-SELECTION tool. kNN is safe in both regimes (0.838/0.836).
 RUNG 5 IS A GO: kNN + MDN proposers in the frozen LeWM latent space.
+
+### R21 — E17 competence gate (job 3616646): clean monotone curve, K*=8
+
+Flat deterministic-LeWM CEM on mm TwoRoom: **86 / 52 / 28 / 10 / 4 %** at
+offsets 4/8/12/16/20 (n=50). K*=8 (pre-registered ≥40% bar; matches the
+historical 52–58%). Flat planning collapses beyond K* → rung-5 task set is
+offsets {12,16} with K=8 subgoals; large capability headroom exists.

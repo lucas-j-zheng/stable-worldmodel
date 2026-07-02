@@ -60,31 +60,20 @@ class SubgoalBank:
         self.K = int(subgoal_offset)
         present = set(self.ds.column_names)
         gcol = next((c for c in GOAL_CANDS if c in present), None)
-        conds, ptrs = [], []
-        for ep in range(len(self.ds.lengths)):
-            T = int(self.ds.lengths[ep])
-            if T <= self.K:
-                continue
-            d = self.ds.load_episode_cols(ep) if hasattr(
-                self.ds, 'load_episode_cols') else self.ds.load_episode(ep)
-            s = np.asarray(d['state'], np.float32).reshape(T, -1)
-            g = (np.asarray(d[gcol], np.float32).reshape(T, -1)
-                 if gcol else np.repeat(s[-1][None], T, 0))
-            for t in range(T - self.K):
-                conds.append(np.concatenate([s[t], g[t]]))
-                ptrs.append((ep, t))
-        cond = np.asarray(conds, np.float32)
-        self.fut_state = np.asarray(
-            [conds[i][: s.shape[1]] for i in range(0)], np.float32)
-        # future states, aligned with ptrs (state at t+K of the same episode)
-        futs = []
+        conds, ptrs, futs = [], [], []
         for ep in range(len(self.ds.lengths)):
             T = int(self.ds.lengths[ep])
             if T <= self.K:
                 continue
             d = self.ds.load_episode(ep)
             s = np.asarray(d['state'], np.float32).reshape(T, -1)
+            g = (np.asarray(d[gcol], np.float32).reshape(T, -1)
+                 if gcol else np.repeat(s[-1][None], T, 0))
+            for t in range(T - self.K):
+                conds.append(np.concatenate([s[t], g[t]]))
+                ptrs.append((ep, t))
             futs.append(s[self.K:])
+        cond = np.asarray(conds, np.float32)
         self.fut_state = np.concatenate(futs, 0)
         self.ptrs = np.asarray(ptrs, np.int64)
         self.scaler = preprocessing.StandardScaler().fit(cond)
@@ -214,26 +203,35 @@ def run(cfg: DictConfig):
     eval_eps = dataset.get_col_data(col_name)[pick]
     eval_start = dataset.get_col_data('step_idx')[pick]
 
+    from omegaconf import OmegaConf
+
     world.set_policy(policy)
-    results = world.evaluate(
+    results_path = Path(
+        swm.data.utils.get_cache_dir(sub_folder='checkpoints'),
+        cfg.policy).parent
+    results_path.mkdir(parents=True, exist_ok=True)
+    eval_options = (OmegaConf.to_container(cfg.eval.get('options'),
+                                           resolve=True)
+                    if cfg.eval.get('options') is not None else None)
+    metrics = world.evaluate(
         dataset=dataset,
-        episodes=eval_eps,
-        start_idx=eval_start,
-        budget=cfg.eval.eval_budget,
+        start_steps=eval_start.tolist(),
         goal_offset=cfg.eval.goal_offset_steps,
-        callables=cfg.eval.callables,
-        options=cfg.eval.get('options', None),
-        seed=cfg.seed,
+        eval_budget=cfg.eval.eval_budget,
+        episodes_idx=eval_eps.tolist(),
+        callables=OmegaConf.to_container(cfg.eval.get('callables'),
+                                         resolve=True),
+        options=eval_options,
+        video=results_path,
     )
-    print('[hier] arm=', arm, 'offset=', cfg.eval.goal_offset_steps)
-    print(results)
-    n_succ = int(np.sum(results['successes'])) if 'successes' in results \
-        else None
-    out = Path(swm.data.utils.get_cache_dir(sub_folder='checkpoints'),
-               cfg.policy).parent / cfg.output.filename
-    out.parent.mkdir(parents=True, exist_ok=True)
+    metrics.pop('proprio_trajectories', None)
+    metrics.pop('goal_proprio', None)
+    succ = np.asarray(metrics.get('episode_successes', []))
+    print(f'[hier] arm={arm} offset={cfg.eval.goal_offset_steps} '
+          f'success={int(succ.sum())}/{len(succ)}')
+    out = results_path / cfg.output.filename
     out.write_text(f'arm={arm} offset={cfg.eval.goal_offset_steps} '
-                   f'success={n_succ}/{cfg.eval.num_eval}\n{results}\n')
+                   f'success={int(succ.sum())}/{len(succ)}\n{metrics}\n')
     print(f'[hier] wrote {out}')
 
 

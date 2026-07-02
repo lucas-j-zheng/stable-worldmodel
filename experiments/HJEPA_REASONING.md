@@ -360,3 +360,23 @@ offsets). Sets K* (largest offset with ≥40% success) and the flat baseline.
 Pre-registered: monotone decrease; K* ∈ [8,16]; if offset-20 still ≥40%, flat
 has no long-horizon deficit at data-reachable offsets → rung-5 capability
 payoff needs cross-episode goals (thesis payoff unaffected).
+
+### E18: closed-loop subgoal-proposer eval (scripts/plan/eval_hier.py)
+
+Minimal rung-5: stock level-1 CEM untouched; wrapper swaps the goal IMAGE for
+a K=8 subgoal frame every 25 steps, from a kNN bank over (state_t, goal_state)
+— the E9-validated conditional. The kNN-retrieval framing makes the subgoal a
+REAL dataset frame, so no cost plumbing changes and no generative decoding.
+Arms isolate mean-vs-sample on the SAME bank, zero training: `sample` (random
+neighbor's future frame) vs `mean` (frame nearest the neighbors' mean future
+state — the conservative-STRONG MSE analog; snapping can only help the mean)
+vs `off` (flat). Deviation from the recorded design, logged: single proposal
+per replan (no M-candidate scoring) — v1 tests whether the bench gap surfaces
+at all; candidate scoring is an upgrade arm.
+
+**Pre-registered:** (1) sample > mean at offsets {12,16}; (2) sample > flat
+(28%/10%); (3) deltas count only if > ~14 (±7/cell noise) pending seed
+replicates. Failure reads: sample ≈ mean ≈ flat ⇒ subgoal guidance doesn't
+bind (replan cadence/K mismatch — diagnose videos); mean ≈ sample > flat ⇒
+guidance helps but snapping rescues the mean (then the raw-mean arm needs a
+latent-cost variant to expose infeasibility closed-loop).
