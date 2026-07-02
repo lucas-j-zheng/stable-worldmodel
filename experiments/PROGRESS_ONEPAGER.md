@@ -89,11 +89,18 @@ which finally has screened-multimodal domains to test on.
 ## Status & next step
 **Closed:** policy side (P0a) — no mean effect, variance interaction confirmed at
 both endpoints; dynamics-on-deterministic-physics negatives — explained.
-**In flight (the live bet):** the slip-TwoRoom pipeline — diffusion vs
-same-backbone-MSE *dynamics* (training-budget-matched, 3 seeds) → closed-loop
-D-MPC verdict on pervasively-bimodal transitions (predict: diffusion wins at
-slip=8, ties at slip=0); sub-pixel dose curve; sampling-vs-training attribution
-of the variance stabilization. **Next after that:** if slip verdict is positive,
-a second domain (PushT contact-slip analogue) turns it into a law; the K-step /
-H-JEPA level-2 route (greenlit: bimodality rises with K) is the abstraction-level
-version of the same bet.
+**NEW (2026-07-02): the slip verdict falsified the dynamics interaction too.**
+On the fair test (same backbone, same post-hoc budget, 3 seeds × n=100,
+screened-bimodal slip env): diffusion beats MSE dynamics **+6 on bimodal AND
++10 on the deterministic control** — a real, seed-consistent advantage that is
+*uncorrelated with multimodality*, so it cannot be mode-capture. The strict
+"generative wins iff the conditional is multimodal" law is now dead on BOTH
+sides of this benchmark family. What survives is a two-part reliability story:
+diffusion stabilizes policy training on multimodal demos (variance), and
+diffusion dynamics plan better for reasons orthogonal to stochasticity —
+attribution probe in flight (1-step inference test: iterative-refinement
+compute vs training-objective quality). **Next:** finish the attribution;
+then either the compute-matched comparison (TMSE with iterative readout /
+diffusion at 1 step) becomes the headline methods result, or the K-step /
+H-JEPA level-2 route remains the last venue where a genuine multimodality
+interaction could still appear.

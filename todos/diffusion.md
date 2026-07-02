@@ -82,11 +82,17 @@ dynamics).*
       training anything. (Standing rule: no diffusion run without a passing screen.)
       → *RUNNING 2026-07-01: `slip_dose_screen.sbatch` job 3612481, S∈{0,2,4,8},
       hidden vs observed contrast.*
-- [ ] **Diffusion-dynamics vs deterministic D-MPC** (CEM) across the dose.
-      Prediction: deterministic predictor smears across the two outcomes ->
-      diffusion finally wins closed-loop, gap tracks the knob.
-- [ ] **Done =** diffusion-dynamics > deterministic on a screened-multimodal
-      domain, dose-dependent — the symmetric half of the law.
+- [x] **Diffusion-dynamics vs deterministic D-MPC** — DONE 2026-07-02
+      (jobs 3614762/3614763, 3 seeds × n=100, architecture+budget matched):
+      diffusion +6 at slip8 **but +10 at the slip0 CONTROL** — the gap is real,
+      seed-consistent, and multimodality-INDEPENDENT. **Interaction FALSIFIED.**
+- [ ] **Attribute the multimodality-independent gap** (job 3618231 running):
+      1-step inference probe on the same diffusion checkpoints. Collapse ⇒
+      iterative-refinement compute; survive ⇒ denoising objective trains a
+      better one-shot predictor. Then decide: compute-matched rematch or close.
+- [x] ~~**Done =** diffusion-dynamics > deterministic on a screened-multimodal
+      domain, dose-dependent~~ — NOT achieved; the law fails on the dynamics
+      side too. See loop log iteration 12.
 
 ### Route 2 — temporal abstraction (K-step / H-JEPA level-2)
 `p(Z_{t+K}|Z_t,a)` may be multimodal even where 1-step is deterministic
