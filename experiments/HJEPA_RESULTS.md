@@ -342,3 +342,17 @@ mechanism test moves to the latent-cost interface (E19): LeWM.get_cost accepts
 a provided `goal_emb`, so the RAW mean embedding can be injected as the CEM
 cost target — the only interface where an off-manifold mean can reach the
 planner.
+
+### R25 — E19 v2 latent-cost arms (job 3631908): raw mean penalty is
+DIRECTIONALLY consistent but under the bar — replanning launders it
+
+sampleL 34% vs meanL 26% at offset 12 (Δ8 < the 14 bar); tie at 16.
+sampleL ≈ image-sample (34 vs 32 ✓ prediction 2 — interfaces agree).
+Registered branch 3 fires: the mechanism that is overwhelming distributionally
+(24–35-pt precision deficits, 0.04 coverage) attenuates closed-loop because
+**replanning self-corrects**: the mean target is bad only while the
+conditional is ambiguous (~K/T of steps); after one replan cycle the state
+has committed and the k-NN conditional collapses to one mode. Note the
+direction is consistent across all three eval designs (Δ = +6, +8, +8 at
+offset 12; pooled 45/150 vs 34/150) — E20 seed replication resolves whether
+a real ~8-pt effect exists below the single-run noise.

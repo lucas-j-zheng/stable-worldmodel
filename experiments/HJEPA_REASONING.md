@@ -407,3 +407,13 @@ interface); (3) if meanL ≈ sampleL even here, the mean-infeasibility mechanism
 does NOT surface in closed-loop TwoRoom at these horizons and the paper's
 closed-loop claim is limited to the capability/interface findings — the
 distributional results (R11/R14/R20) stand on their own.
+
+### E20: closed-loop seed replication (hjepa_hier_seeds.sbatch)
+
+The sample−mean delta is +6/+8/+8 at offset 12 across three independent eval
+designs — each under the 14 bar, all positive. Seeds 43–45 × {sampleL, meanL,
+off} pool to n=200/arm with the seed-42 runs. **Pre-registered decision
+rule:** effect REAL iff pooled Δ ≥ 6 AND every seed's Δ ≥ 0; else the paper
+reports a null closed-loop delta with the replanning-launders-the-mean
+mechanism (R25), and the thesis rests on the distributional results
+(R11/R14/R15/R20), which are already seed-stable.
