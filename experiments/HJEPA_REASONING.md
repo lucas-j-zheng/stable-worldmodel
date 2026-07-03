@@ -380,3 +380,13 @@ replicates. Failure reads: sample ≈ mean ≈ flat ⇒ subgoal guidance doesn't
 bind (replan cadence/K mismatch — diagnose videos); mean ≈ sample > flat ⇒
 guidance helps but snapping rescues the mean (then the raw-mean arm needs a
 latent-cost variant to expose infeasibility closed-loop).
+
+### E18 v2 (hjepa_hier_eval2.sbatch) — fix the two v1 harness flaws
+
+(a) receding_horizon 5→2 for ALL arms (inner replans every 10 steps, matched
+to K=8 subgoals; compute-matched since flat gets it too); (b) final-goal
+handoff at 1.25× the bank's median 8-step hop; subgoal refresh every 10 steps.
+Pre-registered: flat(receding2) reported as the new baseline; sample > mean at
+offset 12 (>14 pts); sample-vs-flat registered as OPEN (if faster replanning
+alone solves offset 12, the capability question moves to 16/20 and the thesis
+test is sample-vs-mean).

@@ -301,3 +301,24 @@ layout bug
 exactly, so the eval_hier harness port is faithful. `sample`/`mean` arms died
 on channel order (env goal is (C,H,W), dataset frames (H,W,C)) — fixed,
 resubmitted as 3618980 (proposer arms only).
+
+### R23 — E18 v3 closed-loop (job 3626672): NEGATIVE, pre-registered
+failure-branch (harness design, not thesis)
+
+| offset | sample | mean | flat |
+|---|---|---|---|
+| 12 | 12/50 | 9/50 | 14/50 |
+| 16 | 1/50 | 2/50 | 5/50 |
+
+Predictions 1–2 both fail: sample ≈ mean (Δ6 < the 14 bar) and both trail
+flat. Diagnosis (matches the registered failure read "guidance doesn't
+bind"): (a) cadence mismatch — inner CEM replans every 25 env steps
+(receding 5 × block 5) against a subgoal only ~8 steps away → plan-once,
+overshoot, loiter; (b) NO final-goal handoff — proposer arms chase an 8-step
+subgoal even at episode end while success is distance-to-FINAL-goal; flat
+aims at the goal throughout. v1's negative is therefore uninformative about
+mean-vs-sample; it measures the naive wrapper. → E18 v2 (hier2): receding 2
+for ALL arms (compute-matched), subgoal refresh every 10 steps, final-goal
+handoff when goal_state is within one subgoal-hop (median 8-step travel from
+the bank). The mean-vs-sample question stays open until then; the bench-level
+result (R11/R14/R20) is unaffected.

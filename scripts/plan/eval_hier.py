@@ -79,7 +79,12 @@ class SubgoalBank:
         self.scaler = preprocessing.StandardScaler().fit(cond)
         self.tree = BallTree(self.scaler.transform(cond))
         self.rng = np.random.default_rng(seed)
-        print(f'[bank] {cond.shape[0]} rows, K={self.K}, goal col={gcol}')
+        # typical K-step travel distance -- sets the final-goal handoff radius
+        d0 = cond[:, : self.fut_state.shape[1]]
+        self.hop = float(np.median(
+            np.linalg.norm(self.fut_state - d0, axis=1)))
+        print(f'[bank] {cond.shape[0]} rows, K={self.K}, goal col={gcol}, '
+              f'median {self.K}-step hop={self.hop:.2f}')
 
     def propose(self, state, goal_state, arm, k=32):
         q = self.scaler.transform(
@@ -125,7 +130,12 @@ class SubgoalPolicy(swm.policy.BasePolicy):
                 s = np.asarray(info_dict['state'][i], np.float32).reshape(-1)
                 g = np.asarray(
                     info_dict['goal_state'][i], np.float32).reshape(-1)
-                frames.append(self.bank.propose(s, g, self.arm, self.k))
+                # FINAL-GOAL HANDOFF (R23 fix): once the true goal is within
+                # ~one subgoal hop, aim directly at it -- flat behavior.
+                if np.linalg.norm(g - s) <= 1.25 * self.bank.hop:
+                    frames.append(None)
+                else:
+                    frames.append(self.bank.propose(s, g, self.arm, self.k))
             self._cached = frames
         new_goal = np.array(goal)                    # copy, keep dtype/shape
 
@@ -142,6 +152,8 @@ class SubgoalPolicy(swm.policy.BasePolicy):
             raise ValueError(f'frame {f.shape} vs goal slot {shape}')
 
         for i, f in enumerate(self._cached):
+            if f is None:                            # handoff: keep true goal
+                continue
             flat = new_goal[i]
             # goal may carry a leading time dim (n, 1, C, H, W)
             if flat.ndim == 4:
