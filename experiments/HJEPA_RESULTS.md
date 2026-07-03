@@ -356,3 +356,45 @@ has committed and the k-NN conditional collapses to one mode. Note the
 direction is consistent across all three eval designs (Δ = +6, +8, +8 at
 offset 12; pooled 45/150 vs 34/150) — E20 seed replication resolves whether
 a real ~8-pt effect exists below the single-run noise.
+
+### R26 — E20 seed replication (job 3633053): CLOSED-LOOP NULL, decisive
+
+Offset 12, n=200/arm pooled over seeds 42–45: sampleL 49/200 (24.5%), meanL
+53/200 (26.5%), flat 57/200 (28.5%). Pre-registered rule (pooled Δ≥6 AND all
+seeds Δ≥0) fails on both counts — per-seed Δ = +4/−4/+3/−7. **The apparent +8
+was seed-42 noise. Final closed-loop verdict: no sample-vs-mean difference and
+no hierarchy benefit in TwoRoom at these horizons.**
+
+---
+
+## SYNTHESIS — what this arc established (2026-07-01 → 07-03)
+
+1. **The strict thesis holds at the distributional level, and only there so
+   far.** On the goal-conditioned K-step proposer conditional — the first
+   conditional in this project that is multimodal under matched conditioning —
+   MSE heads lose 24–35 pts of precision and ~all mode coverage, dose-
+   controlled, seed-stable, in state AND latent space, replicated across three
+   geometries (R11, R14, R15, R18, R20).
+2. **A cheap encoder-free screen predicts where and how much** (R14: deficit
+   monotone in K and in dose, tracking the screen), and doubles as a
+   head-SELECTION tool (R20: wrong-head cost is symmetric).
+3. **The mechanism is mean-in-gap, not multimodality per se** — gap_ratio
+   survived a designed falsification attempt (R18).
+4. **Closed-loop, the deficit is laundered** by three independent effects,
+   each now measured: goal-conditioning removes spurious modes (R2→R8);
+   observation-grounded (retrieval) interfaces cannot express off-manifold
+   means (R24); replanning self-corrects during the ~K/T ambiguous window
+   (R25); net result a decisive null at n=200 (R26).
+5. **Where generative proposers must matter closed-loop** (untested here,
+   the honest frontier): commitment-forcing settings — open-loop execution
+   over the ambiguous window, longer K relative to replan budget, or
+   irreversible early choices. TwoRoom with replanning is NOT such a setting.
+6. Negative controls banked: PushT flat at K-step (R4), random-walk mazes
+   mode-free (R10/R17), policy-side soft-modes dead (R12), +10 non-replication
+   (cross-track).
+
+**Paper shape:** "When do generative world models pay off?" — the screen, the
+bench, the mechanism metric, the dose/K central figure, and the closed-loop
+attenuation analysis (points 4–5) as the honest, novel second half.
+Remaining arms (separate stages): rung-4 SIGReg-composition Pareto;
+commitment-forcing closed-loop domain.
