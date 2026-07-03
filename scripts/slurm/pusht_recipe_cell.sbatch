@@ -26,7 +26,7 @@ mkdir -p logs
 # the 20-step sampling penalty).
 # KIND=x0|v|tmse — one objective per job, 3 real seeds, matched budget (EP=5,
 # the proven-to-fit PushT budget), closed-loop eval @1 and @20 steps.
-ENC=lewm_pusht/weights_epoch_300.pt
+ENC=lewm_pusht/weights.pt
 EP=${EP:-5}
 KIND=${KIND:?set KIND=x0, v, or tmse}
 
