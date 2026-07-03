@@ -576,3 +576,18 @@ eval @1 and @20 steps × 2 eval seeds × n=50. Registered predictions:
 (1) x0@1 > tmse (recipe transfers); (2) x0@1 > x0@20 (sampling penalty
 reproduces); (3) if x0@1 also clears the old jointly-trained deterministic
 16%, the historical PushT negative is overturned as an artifact.
+
+## ARC 2, iteration 1 — 2026-07-03: x0 cell lands (job 3634374, after an encoder-path fix resubmit)
+
+| dyn_x0 PushT, 3 seeds × n=100 | mean (per-seed) |
+|---|---|
+| @1 step | **20.0** (18/19/23) |
+| @20 steps | **13.0** (11/12/16) |
+
+Predictions 2 and 3 already CONFIRMED on the second domain: the sampling
+penalty reproduces (20.0 @1 vs 13.0 @20, every seed), and x0@1 clears the old
+jointly-trained deterministic 16% while the old "diffusion loses at 8%" now
+reads as artifact (budget confound + sampling penalty compounded). Prediction 1
+(x0@1 > post-hoc TMSE, the recipe claim proper) awaits the tmse cell (3634376,
+queued); v cell (3634375) mid-run. NB: eval-seed spread is large on PushT
+(±6-12 at n=50) but per-seed means are tight.
