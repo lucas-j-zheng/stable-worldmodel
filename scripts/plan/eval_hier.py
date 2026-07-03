@@ -178,7 +178,9 @@ class LatentSubgoalPolicy(swm.policy.BasePolicy):
                     zs.append(embs[int(self.bank.rng.integers(len(embs)))])
             self._z = torch.stack(zs)                 # (n, D)
         info_dict = dict(info_dict)
-        info_dict['goal_emb'] = self._z[:, None, None, :]  # (n, 1, 1, D)
+        # flat (n, D): the solver slices per env and inserts the sample dim
+        # itself; criterion right-aligns via [..., -1:, :].expand_as(pred).
+        info_dict['goal_emb'] = self._z
         self._step += 1
         return self.inner.get_action(info_dict, **kw)
 
