@@ -322,3 +322,23 @@ for ALL arms (compute-matched), subgoal refresh every 10 steps, final-goal
 handoff when goal_state is within one subgoal-hop (median 8-step travel from
 the bank). The mean-vs-sample question stays open until then; the bench-level
 result (R11/R14/R20) is unaffected.
+
+### R24 — E18 v2 (job 3630164): no closed-loop gap through the IMAGE-goal
+interface — and the reason is itself a finding
+
+| offset | sample | mean | flat(receding2) |
+|---|---|---|---|
+| 12 | 32% | 24% | 28% |
+| 16 | 4% | 2% | 14% |
+
+sample−mean = Δ4 (< the 14 bar); guidance ≤ flat; at 16 it hurts. Registered
+failure read applies: **the mean arm is manifold-snapped by construction — an
+image-goal interface can only present REAL frames, so the off-manifold-mean
+failure the bench measures is structurally unreachable through it.** Positive
+reframing for the paper: grounding subgoals in retrieved real observations is
+itself a fix for mean-infeasibility ("retrieve, don't regress"); once grounded,
+mean-vs-sample differences fall below noise in this domain. The raw-mean
+mechanism test moves to the latent-cost interface (E19): LeWM.get_cost accepts
+a provided `goal_emb`, so the RAW mean embedding can be injected as the CEM
+cost target — the only interface where an off-manifold mean can reach the
+planner.

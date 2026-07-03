@@ -390,3 +390,20 @@ Pre-registered: flat(receding2) reported as the new baseline; sample > mean at
 offset 12 (>14 pts); sample-vs-flat registered as OPEN (if faster replanning
 alone solves offset 12, the capability question moves to 16/20 and the thesis
 test is sample-vs-mean).
+
+### E19: latent-cost closed-loop arms (LatentSubgoalPolicy)
+
+`goal_emb` injection short-circuits goal-image encoding in LeWM.get_cost
+(verified: exact-key gating in _prepare_info leaves it untouched; non-history
+keys pass through _make_solver_info). Arms: `meanL` = RAW mean of k=8
+neighbor-future embeddings (off-manifold — the bench's mean, now reachable
+closed-loop); `sampleL` = one neighbor's embedding. Handoff envs aim at the
+true goal's embedding.
+
+**Pre-registered.** (1) meanL < sampleL by >14 pts at offset 12 (the raw mean
+cost target sits between route embeddings → CEM steers toward wall/median
+states); (2) sampleL ≈ image-sample arm (~32% at 12; same information, other
+interface); (3) if meanL ≈ sampleL even here, the mean-infeasibility mechanism
+does NOT surface in closed-loop TwoRoom at these horizons and the paper's
+closed-loop claim is limited to the capability/interface findings — the
+distributional results (R11/R14/R20) stand on their own.

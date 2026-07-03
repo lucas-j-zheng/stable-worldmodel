@@ -103,6 +103,86 @@ class SubgoalBank:
         return px[int(t) + self.K]                   # (H, W, C) uint8
 
 
+class LatentSubgoalPolicy(swm.policy.BasePolicy):
+    """E19 latent-cost arms: inject `goal_emb` directly (LeWM.get_cost uses a
+    provided goal_emb and skips goal-image encoding). This is the ONLY
+    interface that can expose the RAW conditional mean closed-loop -- an
+    off-manifold mean cannot be rendered as a goal image (R23/R24 lesson).
+
+    arm='sampleL': z* = embedding of ONE random neighbor's future frame.
+    arm='meanL'  : z* = MEAN of the k neighbors' future-frame embeddings --
+                   the raw mean in the model's own embedding space.
+    Handoff envs (goal within one hop) get z* = embedding of the true goal
+    image, so all arms aim at the real goal at the end.
+    """
+
+    def __init__(self, inner, bank, model, transform, arm,
+                 replan_every=10, k=8):
+        super().__init__()
+        self.type = 'world_model'
+        self.inner, self.bank, self.arm = inner, bank, arm
+        self.model, self.tf = model, transform
+        self.replan_every, self.k = int(replan_every), int(k)
+        self._step = 0
+        self._z = None                                # (n_envs, D) torch
+
+    def set_env(self, env):
+        self.env = env
+        self.inner.set_env(env)
+
+    def set_seed(self, seed):
+        if hasattr(self.inner, 'set_seed'):
+            self.inner.set_seed(seed)
+
+    @torch.no_grad()
+    def _embed_frames(self, frames):
+        """frames: list of (C,H,W)|(H,W,C) uint8 -> (n, D) cuda embeddings."""
+        from torchvision import tv_tensors
+        xs = []
+        for f in frames:
+            if f.shape[-1] == 3:                      # HWC -> CHW
+                f = np.transpose(f, (2, 0, 1))
+            xs.append(self.tf(tv_tensors.Image(torch.from_numpy(
+                np.ascontiguousarray(f)))))
+        px = torch.stack(xs).unsqueeze(1).to('cuda')  # (n, 1, C, H, W)
+        out = self.model.encode({'pixels': px})
+        return out['emb'][:, 0]                       # (n, D)
+
+    def get_action(self, info_dict, **kw):
+        goal = info_dict['goal']
+        n = goal.shape[0]
+        if self._step % self.replan_every == 0 or self._z is None:
+            zs = []
+            for i in range(n):
+                s = np.asarray(info_dict['state'][i], np.float32).reshape(-1)
+                g = np.asarray(
+                    info_dict['goal_state'][i], np.float32).reshape(-1)
+                if np.linalg.norm(g - s) <= 1.25 * self.bank.hop:
+                    gf = np.asarray(goal[i])
+                    gf = gf[0] if gf.ndim == 4 else gf
+                    zs.append(self._embed_frames([gf])[0])
+                    continue
+                q = self.bank.scaler.transform(
+                    np.concatenate([s, g]).reshape(1, -1))
+                _, nbr = self.bank.tree.query(q, k=self.k)
+                frames = []
+                for j in nbr[0]:
+                    ep, t = self.bank.ptrs[j]
+                    d = self.bank.ds.load_episode(int(ep))
+                    frames.append(
+                        np.asarray(d['pixels'])[int(t) + self.bank.K])
+                embs = self._embed_frames(frames)
+                if self.arm == 'meanL':
+                    zs.append(embs.mean(0))           # RAW off-manifold mean
+                else:                                  # sampleL
+                    zs.append(embs[int(self.bank.rng.integers(len(embs)))])
+            self._z = torch.stack(zs)                 # (n, D)
+        info_dict = dict(info_dict)
+        info_dict['goal_emb'] = self._z[:, None, None, :]  # (n, 1, 1, D)
+        self._step += 1
+        return self.inner.get_action(info_dict, **kw)
+
+
 class SubgoalPolicy(swm.policy.BasePolicy):
     """Rewrites info_dict['goal'] with proposer subgoal frames, then defers."""
 
@@ -211,6 +291,10 @@ def run(cfg: DictConfig):
 
     if arm == 'off':
         policy = inner
+    elif arm in ('sampleL', 'meanL'):
+        bank = SubgoalBank(bank_name, sub_k, seed=cfg.seed)
+        policy = LatentSubgoalPolicy(
+            inner, bank, model, transform['goal'], arm, replan, k=8)
     else:
         bank = SubgoalBank(bank_name, sub_k, seed=cfg.seed)
         policy = SubgoalPolicy(inner, bank, arm, replan, k=32)
