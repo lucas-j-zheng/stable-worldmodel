@@ -556,3 +556,23 @@ recipe (PushT) — turns the recipe into a general claim; (b) H-JEPA rung 2
 multimodality effect could still appear); (c) P2/JEDI needs a NEW rationale —
 its premise ("diffusion wins because multimodal dynamics") is invalidated, but
 "denoising as latent-shaping training signal" is a coherent replacement.
+
+---
+
+# ARC 2 — 2026-07-03: does the noise-curriculum recipe transfer? (PushT)
+
+**Why.** Arc 1's headline is a training-recipe claim (*denoising regression >
+clean MSE for one-shot latent dynamics, multimodality-independent*). One env is
+an observation; two is a recipe. PushT (contact manipulation, deterministic
+physics — so the multimodality-independence prediction applies directly) has
+all assets in place: `pusht_latent.lance`, `lewm_pusht`, the E6 eval harness.
+Bonus stake: the old "diffusion loses on PushT" negative (det 16% vs diff 8%)
+carried BOTH confounds arc 1 exposed (joint-vs-post-hoc budget; 20-step
+sampling penalty) — x0@1step may overturn it.
+
+**Launched (2026-07-03): jobs 3634351 (x0) / 3634352 (v) / 3634353 (tmse)** —
+3 real seeds each, matched budget (EP=5, the proven PushT budget), closed-loop
+eval @1 and @20 steps × 2 eval seeds × n=50. Registered predictions:
+(1) x0@1 > tmse (recipe transfers); (2) x0@1 > x0@20 (sampling penalty
+reproduces); (3) if x0@1 also clears the old jointly-trained deterministic
+16%, the historical PushT negative is overturned as an artifact.
