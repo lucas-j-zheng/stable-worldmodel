@@ -591,3 +591,32 @@ reads as artifact (budget confound + sampling penalty compounded). Prediction 1
 (x0@1 > post-hoc TMSE, the recipe claim proper) awaits the tmse cell (3634376,
 queued); v cell (3634375) mid-run. NB: eval-seed spread is large on PushT
 (±6-12 at n=50) but per-seed means are tight.
+
+## ARC 2, iteration 2 — 2026-07-03 ~16:30: v + tmse land — THE RECIPE INVERTS ON PUSHT
+
+| PushT, 3 seeds × n=100, EP=5 matched | mean |
+|---|---|
+| **TMSE @1 (clean-input regression)** | **30.7** (30/31/31) |
+| x0 @1 | 20.0 |
+| x0 @20 | 13.0 |
+| v @1 | 10.0 |
+| v @20 | 9.0 |
+
+**Prediction 1 REFUTED, decisively: on contact manipulation the clean-input MSE
+regressor beats noise-curriculum regression 1.5× and v-diffusion 3×.** The
+TwoRoom recipe (x0@1 +10–14 over TMSE) is domain-specific, not general. Also
+notable: post-hoc TMSE at 30.7 ≈ 2× the old jointly-trained deterministic
+baseline (16%) — post-hoc training on cached latents beats the joint predictor
+on PushT regardless of objective.
+
+**What remains robust across EVERY cell of both domains:** (a) sampling is
+neutral-to-harmful for planning (one-shot readouts win or tie in all 8
+model×domain cells); (b) v-parametrization is never the best choice;
+(c) each clean narrative so far (multimodality, then noise-curriculum-as-recipe)
+died on its control/transfer test.
+
+**One alternative explanation to kill before accepting the inversion:** noise
+curricula may converge slower — PushT ran at EP=5. Budget check queued: x0 +
+TMSE at EP=15, same protocol. TMSE still ahead at 3× budget ⇒ inversion stands
+and the arc closes on "objective choice is domain-dependent; sampling penalty
+is universal". (Submission pending — Oscar SSH flapping; retry next wake.)
