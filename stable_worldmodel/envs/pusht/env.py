@@ -36,12 +36,26 @@ class PushT(gym.Env):
         render_mode='rgb_array',
         relative=True,
         init_value=None,
+        contact_slip_scale=0.0,
     ):
         self._seed = None
         self.window_size = ws = 512  # The size of the PyGame window
         self.render_size = resolution
         self.relative = relative
         self.action_scale = 100
+
+        # INTRINSIC per-step aleatoric "contact slip" for the IRREVERSIBILITY
+        # experiment (ARC 4). contact_slip_scale=0 (default) -> byte-identical to
+        # the original env. When >0, each step draws a fair coin and displaces the
+        # PD action TARGET by +-contact_slip_scale along the x-axis before the
+        # physics substeps. Away from the block this is reversible agent wiggle
+        # (PD pulls back next step); AT CONTACT it perturbs which side/angle the
+        # pusher strikes the T, producing divergent, path-dependent block poses
+        # that receding-horizon replanning CANNOT undo (unlike TwoRoom slip). This
+        # is the multimodal-AND-irreversible dynamics the sampling thesis needs:
+        # the one regime where planning to the conditional mean should fail.
+        self.contact_slip_scale = float(contact_slip_scale)
+        self.last_contact_slip = np.zeros(2, dtype=np.float32)
 
         # physics
         self.control_hz = self.metadata['render_fps']
@@ -313,6 +327,18 @@ class PushT(gym.Env):
         self.n_contact_points = 0
         n_steps = int(1 / (self.dt * self.control_hz))
 
+        # Per-step aleatoric contact-slip coin (ARC 4). Perturb the RAW commanded
+        # action by a fair +-contact_slip_scale along x, drawn once per step (not
+        # per substep), BEFORE the relative transform so it stays a plain ndarray
+        # and flows through the exact same path as any action. Unresolvable by any
+        # conditioning; last_contact_slip recorded in info for observed-vs-hidden
+        # multimodality screens (mirrors TwoRoom slip_state).
+        if self.contact_slip_scale > 0.0:
+            sign = 1.0 if self.rng.random() < 0.5 else -1.0
+            slip = np.array([sign * self.contact_slip_scale, 0.0], dtype=np.float32)
+            self.last_contact_slip = slip
+            action = np.asarray(action, dtype=np.float64) + slip
+
         self.latest_action = action
 
         if self.relative:
@@ -398,6 +424,7 @@ class PushT(gym.Env):
             'goal_proprio': goal_proprio,
             'n_contacts': n_contact_points_per_step,
             'goal': self._goal,
+            'contact_slip': np.asarray(self.last_contact_slip, dtype=np.float32),
         }
 
         return info
