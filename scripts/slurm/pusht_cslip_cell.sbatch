@@ -60,7 +60,7 @@ for s in 1 2 3; do
       echo "[cslip-cell] ==== EVAL $name steps=$st (n=50, eval seed $es) ===="
       python scripts/plan/eval_wm.py --config-name pusht_diffusion \
         policy=${name}/weights_epoch_$EP.pt cache_dir="$LOCAL_DATASET_DIR" \
-        seed=$es world.contact_slip_scale=$SLIP eval.dataset_name=pusht_${TAG}.lance \
+        seed=$es +world.contact_slip_scale=$SLIP eval.dataset_name=pusht_${TAG}.lance \
         "+model_overrides={num_inference_steps:$st}" 2>&1 \
         | grep -iE "success_rate" | tail -1
     done
@@ -68,7 +68,7 @@ for s in 1 2 3; do
     echo "[cslip-cell] ==== EVAL $tname (TMSE, n=50, eval seed $es) ===="
     python scripts/plan/eval_wm.py --config-name pusht_diffusion \
       policy=${tname}/weights_epoch_$EP.pt cache_dir="$LOCAL_DATASET_DIR" \
-      seed=$es world.contact_slip_scale=$SLIP eval.dataset_name=pusht_${TAG}.lance \
+      seed=$es +world.contact_slip_scale=$SLIP eval.dataset_name=pusht_${TAG}.lance \
       2>&1 | grep -iE "success_rate" | tail -1
   done
 done
