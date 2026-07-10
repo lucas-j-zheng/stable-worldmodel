@@ -26,7 +26,6 @@ for DS in pusht_cslip05_latent.lance \
           pusht_cslip05_e2e_tmse_cslip05_ps1.lance \
           pusht_cslip05_e2e_tmse_cslip05_ps2.lance \
           pusht_cslip05_e2e_tmse_cslip05_ps3.lance; do
-  python scripts/data/latent_marginal_stats.py dataset_name=$DS n_episodes=50 \
-    2>&1 | grep -E "latstats|Error|Traceback" | tail -3
+  python scripts/data/latent_marginal_stats.py --dataset $DS --n-episodes 50 2>&1 | tail -4
 done
 echo "DONE-E2E-LATSTATS"
