@@ -160,6 +160,29 @@ def run(cfg):
         },
     }
 
+    # E2E (ARC 5): when the encoder is trainable, give it its own optimizer at
+    # a scaled-down LR (fine-tune the pretrained lewm, don't destroy it).
+    # Requires training from pixels (data=pusht/tworoom, not *_latent — the
+    # cached-latent fast path detaches and would leave these params gradless).
+    if not cfg.model.get('freeze_lewm', True):
+        enc_opt = dict(cfg.optimizer)
+        enc_opt['lr'] = float(cfg.optimizer.lr) * cfg.get(
+            'encoder_lr_scale', 0.1
+        )
+        optimizers['encoder_opt'] = {
+            'modules': 'model.lewm',
+            'optimizer': enc_opt,
+            'scheduler': {
+                'type': 'LinearWarmupCosineAnnealingLR',
+                'warmup_steps': max(1, int(0.01 * total_steps)),
+                'max_steps': total_steps,
+            },
+            'interval': 'epoch',
+        }
+        print(
+            f'[e2e] encoder UNFROZEN: model.lewm trains at lr={enc_opt["lr"]:.2e}'
+        )
+
     data_module = spt.data.DataModule(train=train, val=val)
     module = spt.Module(
         model=model,

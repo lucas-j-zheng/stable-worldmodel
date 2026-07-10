@@ -346,15 +346,21 @@ class LatentDiffusionDynamics(nn.Module):
             ) / sqrt_one_minus_alpha.clamp_min(1e-6)
         return pred_start, pred_noise
 
-    @torch.no_grad()
     def encode_latents(self, info: dict) -> torch.Tensor:
         # Fast path: a precomputed ``latent`` column (e.g. from the offline
         # latent cache) lets training skip the frozen encoder entirely. Planning
         # still encodes raw observations online via the LeWM encoder below.
         if 'latent' in info and torch.is_tensor(info['latent']):
             return info['latent'].detach()
+        # E2E (ARC 5): with a trainable encoder, keep the graph so the dynamics
+        # loss shapes the representation. The frozen path stays no-grad+detached
+        # (was a @torch.no_grad() method before 2026-07-09; behavior preserved).
+        if self.freeze_lewm:
+            with torch.no_grad():
+                encoded = self.lewm.encode(dict(info))
+            return encoded['emb'].detach()
         encoded = self.lewm.encode(dict(info))
-        return encoded['emb'].detach()
+        return encoded['emb']
 
     @torch.no_grad()
     def encode_actions(self, actions: torch.Tensor) -> torch.Tensor:

@@ -62,6 +62,11 @@ def run(cfg: DictConfig):
     device = torch.device(cfg.device)
 
     lewm = swm.wm.utils.load_pretrained(cfg.lewm_checkpoint)
+    # E2E (ARC 5): `+from_dynamics=true` accepts a DYNAMICS checkpoint and
+    # extracts its (possibly fine-tuned) encoder — used to re-screen latent
+    # multimodality after joint encoder+dynamics training.
+    if cfg.get('from_dynamics', False):
+        lewm = lewm.lewm
     lewm = lewm.to(device).eval()
     lewm.requires_grad_(False)
     if hasattr(lewm, 'interpolate_pos_encoding'):
