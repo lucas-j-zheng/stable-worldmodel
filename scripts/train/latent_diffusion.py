@@ -13,6 +13,7 @@ from omegaconf import OmegaConf, open_dict
 from stable_pretraining import data as dt
 
 from stable_worldmodel.data import column_normalizer as get_column_normalizer
+from stable_worldmodel.wm.loss import SIGReg
 from stable_worldmodel.wm.utils import save_pretrained
 
 
@@ -68,6 +69,16 @@ def latent_diffusion_forward(self, batch, stage, cfg):
         horizon=cfg.wm.horizon,
     )
     output['loss'] = output['diffusion_loss']
+
+    # E2E + SIGReg (ARC 5b): with a trainable encoder, the bare dynamics loss
+    # COLLAPSES the representation (measured: frozen global_std 0.97 -> e2e-diff
+    # 0.2, e2e-tmse 0.04 — planner floors). Retain the SIGReg anti-collapse
+    # regularizer as an auxiliary loss, exactly as in lewm.py pretraining.
+    if getattr(self, 'sigreg', None) is not None:
+        output['sigreg_loss'] = self.sigreg(output['emb'].transpose(0, 1))
+        output['loss'] = (
+            output['loss'] + cfg.sigreg_weight * output['sigreg_loss']
+        )
 
     losses = {
         f'{stage}/{k}': v.detach() for k, v in output.items() if 'loss' in k
@@ -184,10 +195,17 @@ def run(cfg):
         )
 
     data_module = spt.data.DataModule(train=train, val=val)
+    module_kwargs = {}
+    # ARC 5b: attach the SIGReg anti-collapse regularizer for e2e training
+    # (same knots/num_proj as lewm pretraining; weight via +sigreg_weight=0.09).
+    if float(cfg.get('sigreg_weight', 0.0)) > 0.0:
+        module_kwargs['sigreg'] = SIGReg(knots=17, num_proj=1024)
+        print(f"[e2e] SIGReg auxiliary loss ON (weight={cfg.sigreg_weight})")
     module = spt.Module(
         model=model,
         forward=partial(latent_diffusion_forward, cfg=cfg),
         optim=optimizers,
+        **module_kwargs,
     )
 
     ##########################
