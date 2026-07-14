@@ -211,6 +211,75 @@ def test_history_is_padded_to_trained_size_at_episode_start():
     torch.testing.assert_close(fitted[:, -1], single_frame[:, 0])
 
 
+def _e2e_model(cls, freeze_lewm, stopgrad_target):
+    return cls(
+        denoiser=make_denoiser(),
+        lewm=StubLeWM(),
+        freeze_lewm=freeze_lewm,
+        stopgrad_target=stopgrad_target,
+        history_size=HISTORY,
+        horizon=HORIZON,
+        num_diffusion_steps=20,
+        num_inference_steps=4,
+    )
+
+
+def _e2e_batch():
+    return {
+        "pixels": torch.randn(4, HISTORY + HORIZON, LATENT_DIM),
+        "action": torch.randn(4, HISTORY + HORIZON, ACTION_RAW),
+    }
+
+
+def _encoder_grad_norm(model):
+    out = model.diffusion_loss(_e2e_batch())
+    model.zero_grad()
+    out["diffusion_loss"].backward()
+    grad = model.lewm.enc.weight.grad
+    return (0.0 if grad is None else grad.norm().item()), out
+
+
+def _mse_dynamics_cls():
+    from stable_worldmodel.wm.latent_diffusion.transformer_mse_dynamics import (
+        TransformerMSEDynamics,
+    )
+
+    return TransformerMSEDynamics
+
+
+@pytest.mark.parametrize(
+    "cls_factory",
+    [lambda: LatentDiffusionDynamics, _mse_dynamics_cls],
+    ids=["diffusion", "tmse"],
+)
+def test_e2e_stopgrad_target_grad_flow(cls_factory):
+    """ARC 5c regression: the dynamics loss must not leak encoder gradients
+    through the prediction-target branch (the measured ARC 5 collapse channel).
+
+    Contract: frozen -> no encoder grads at all; e2e + stopgrad (default) ->
+    grads via the history/conditioning branch only, target graph cut, the
+    SIGReg path ('emb') keeps its graph; stopgrad_target=False reproduces the
+    pre-fix behavior (target branch live) for old-run comparability.
+    """
+    cls = cls_factory()
+
+    torch.manual_seed(0)
+    grad, out = _encoder_grad_norm(_e2e_model(cls, True, True))
+    assert grad == 0.0
+    assert not out["target_emb"].requires_grad
+
+    torch.manual_seed(0)
+    grad, out = _encoder_grad_norm(_e2e_model(cls, False, True))
+    assert grad > 0.0
+    assert not out["target_emb"].requires_grad
+    assert out["emb"].requires_grad
+
+    torch.manual_seed(0)
+    grad_old, out = _encoder_grad_norm(_e2e_model(cls, False, False))
+    assert grad_old > 0.0
+    assert out["target_emb"].requires_grad
+
+
 def test_self_contained_checkpoint_round_trip(tmp_path, monkeypatch):
     """Saving inlines the LeWM config; reload works without the LeWM file."""
     pytest.importorskip("omegaconf")
