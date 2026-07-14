@@ -52,6 +52,11 @@ class TransformerMSEDynamics(LatentDiffusionDynamics):
         dtype = next(self.denoiser.parameters()).dtype
         history = emb[:, :history_size].to(dtype=dtype)
         target = emb[:, history_size : history_size + horizon].to(dtype=dtype)
+        if self.stopgrad_target and not self.freeze_lewm:
+            # E2E: sever the constant-latent shortcut (see LatentDiffusionDynamics).
+            # For pure MSE this is the textbook collapse route — measured 6x
+            # harder than diffusion in ARC 5 (global std 0.04 vs 0.2).
+            target = target.detach()
 
         action_context = self.training_action_context(
             batch['action'], history_size, horizon

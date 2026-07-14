@@ -180,6 +180,10 @@ def run(cfg):
         enc_opt['lr'] = float(cfg.optimizer.lr) * cfg.get(
             'encoder_lr_scale', 0.1
         )
+        # No weight decay on the pretrained encoder: AdamW decay is a direct,
+        # gradient-independent shrink pressure on the latent scale — one more
+        # collapse channel SIGReg would otherwise have to fight (ARC 5c).
+        enc_opt['weight_decay'] = 0.0
         optimizers['encoder_opt'] = {
             'modules': 'model.lewm',
             'optimizer': enc_opt,

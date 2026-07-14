@@ -26,6 +26,7 @@ class LatentDiffusionDynamics(nn.Module):
         lewm: nn.Module | None = None,
         lewm_checkpoint: str | None = None,
         freeze_lewm: bool = True,
+        stopgrad_target: bool = True,
         history_size: int | None = None,
         horizon: int | None = None,
         num_diffusion_steps: int = 100,
@@ -62,6 +63,13 @@ class LatentDiffusionDynamics(nn.Module):
         self.denoiser = denoiser
         self.lewm_checkpoint = lewm_checkpoint
         self.freeze_lewm = freeze_lewm
+        # E2E only: cut the gradient through the prediction-target branch of
+        # the dynamics loss. Without this, a trainable encoder can minimize the
+        # loss by making targets trivially predictable (shrink every latent) —
+        # the ARC 5 collapse (global std 0.97 -> 0.2 diff / 0.04 tmse). With it,
+        # the encoder learns only through the history/conditioning branch
+        # (JEPA-style). No effect when the encoder is frozen.
+        self.stopgrad_target = bool(stopgrad_target)
         self.history_size = (
             int(history_size) if history_size is not None else None
         )
@@ -433,6 +441,8 @@ class LatentDiffusionDynamics(nn.Module):
         dtype = next(self.denoiser.parameters()).dtype
         history = emb[:, :history_size].to(dtype=dtype)
         target = emb[:, history_size : history_size + horizon].to(dtype=dtype)
+        if self.stopgrad_target and not self.freeze_lewm:
+            target = target.detach()
 
         action_context = self.training_action_context(
             batch['action'], history_size, horizon
