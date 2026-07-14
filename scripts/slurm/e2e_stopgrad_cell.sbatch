@@ -53,8 +53,15 @@ TAG=cslip05
 SLIP=0.5
 EP=${EP:-5}
 BS=${BS:-128}
+# 5c-aux attribution cell (SIGW=0): ARC 5's 0.111 restoration was measured
+# WITHOUT stop-grad, so 5c's Q2 failure is ambiguous between "SIGReg deletes
+# modes" and "stop-grad cut the shaping channel". stopgrad-on + SIGReg-off
+# distinguishes: bimodal ~0.111 -> SIGReg is the deleter; ~0.005 -> the
+# target branch WAS the shaping channel (and the trilemma tightens further).
+SIGW=${SIGW:-0.09}
 ENC=lewm_pusht/weights.pt
 NAME="e2c_${KIND}_${TAG}_ps${SEED}"
+[ "$SIGW" != "0.09" ] && NAME="e2c_${KIND}_sw${SIGW/./}_${TAG}_ps${SEED}"
 
 extra="model.prediction_type=v model.num_inference_steps=20"
 if [ "$KIND" = tmse ]; then
@@ -66,7 +73,7 @@ python scripts/train/latent_diffusion.py \
   data=pusht data.dataset.name=pusht_${TAG}.lance \
   $extra model.lewm_checkpoint=$ENC model.freeze_lewm=false \
   +model.stopgrad_target=true \
-  +encoder_lr_scale=0.1 +sigreg_weight=0.09 \
+  +encoder_lr_scale=0.1 +sigreg_weight=$SIGW \
   output_model_name=$NAME seed=$SEED \
   trainer.max_epochs=$EP trainer.accelerator=gpu trainer.devices=1 \
   optimizer.lr=3e-4 loader.batch_size=$BS num_workers=5 loader.num_workers=5 \
