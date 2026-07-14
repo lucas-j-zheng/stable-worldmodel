@@ -14,6 +14,9 @@ set -uo pipefail
 cd /users/lzheng35/Desktop/brown/world-models/stable-worldmodel
 source .venv/bin/activate
 export MUJOCO_GL=egl
+# Batch 128 from pixels is ~21.5 GiB peak — fits 24G cards, OOMs 22G ones by
+# ~0.5 GiB fragmentation (job 3963410). Expandable segments closes that gap.
+export PYTORCH_ALLOC_CONF=expandable_segments:True
 export STABLEWM_HOME=${STABLEWM_HOME:-/oscar/scratch/$USER/stable_worldmodel}
 export LOCAL_DATASET_DIR=${LOCAL_DATASET_DIR:-$STABLEWM_HOME}
 mkdir -p logs
