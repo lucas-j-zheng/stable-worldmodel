@@ -29,10 +29,22 @@ def img_transform(cfg, dtype=torch.float32):
     return transform
 
 
+def episode_col(dataset):
+    """Name of the episode-index column, robust across dataset formats.
+
+    HDF5 lists every column (including index columns) in ``column_names``,
+    but the Lance reader deliberately excludes its index columns
+    (``episode_idx``/``step_idx``) from ``column_names`` and only exposes
+    them via ``_schema_names``. Consult both so ``episode_idx`` is found
+    regardless of format.
+    """
+    names = set(dataset.column_names)
+    names |= set(getattr(dataset, '_schema_names', ()))
+    return 'episode_idx' if 'episode_idx' in names else 'ep_idx'
+
+
 def get_episodes_length(dataset, episodes):
-    # Lance datasets expose episode_idx/step_idx but omit them from
-    # column_names; h5 datasets that use ep_idx do list it.
-    col_name = 'ep_idx' if 'ep_idx' in dataset.column_names else 'episode_idx'
+    col_name = episode_col(dataset)
 
     episode_idx = dataset.get_col_data(col_name)
     step_idx = dataset.get_col_data('step_idx')
@@ -72,9 +84,7 @@ def run(cfg: DictConfig):
 
     dataset = get_dataset(cfg, cfg.eval.dataset_name)
     stats_dataset = dataset  # get_dataset(cfg, cfg.dataset.stats)
-    # Lance datasets expose episode_idx/step_idx but omit them from
-    # column_names; h5 datasets that use ep_idx do list it.
-    col_name = 'ep_idx' if 'ep_idx' in dataset.column_names else 'episode_idx'
+    col_name = episode_col(dataset)
     ep_indices, _ = np.unique(
         stats_dataset.get_col_data(col_name), return_index=True
     )
@@ -122,7 +132,9 @@ def run(cfg: DictConfig):
             )
             model.predictor = torch.compile(model.predictor)
         config = swm.PlanConfig(**cfg.plan_config)
-        solver = hydra.utils.instantiate(cfg.solver, model=model)
+        objective = hydra.utils.instantiate(cfg.objective)
+        cost = swm.planning.ShootingCostEvaluator(model, objective)
+        solver = hydra.utils.instantiate(cfg.solver, cost=cost)
         policy = swm.policy.WorldModelPolicy(
             solver=solver, config=config, process=process, transform=transform
         )
@@ -145,9 +157,7 @@ def run(cfg: DictConfig):
         ep_id: max_start_idx[i] for i, ep_id in enumerate(ep_indices)
     }
     # Map each dataset row’s episode_idx to its max_start_idx
-    # Lance datasets expose episode_idx/step_idx but omit them from
-    # column_names; h5 datasets that use ep_idx do list it.
-    col_name = 'ep_idx' if 'ep_idx' in dataset.column_names else 'episode_idx'
+    col_name = episode_col(dataset)
     max_start_per_row = np.array(
         [max_start_idx_dict[ep_id] for ep_id in dataset.get_col_data(col_name)]
     )
@@ -167,9 +177,9 @@ def run(cfg: DictConfig):
 
     print(random_episode_indices)
 
-    # get_col_data loads index columns even when they are not in the dataset's
-    # loaded keys (get_row_data only returns loaded keys, and lance hides
-    # episode_idx/step_idx from those). Index the full columns by row instead.
+    # Index the full index columns directly: the Lance reader excludes
+    # index columns (episode_idx/step_idx) from get_row_data, but get_col_data
+    # exposes them (and both are already cached from the checks above).
     eval_episodes = dataset.get_col_data(col_name)[random_episode_indices]
     eval_start_idx = dataset.get_col_data('step_idx')[random_episode_indices]
 

@@ -1,6 +1,6 @@
 [project]
 name = "stable-worldmodel"
-version = "0.1.0"
+version = "0.1.1"
 description = "World Model Research Made Simple"
 readme="README.md"
 license="MIT"
@@ -28,6 +28,7 @@ dependencies = [
   "tqdm",
   "typer",
   "rich",
+  "hydra-core",
 ]
 
 [project.scripts]
@@ -36,8 +37,8 @@ swm = "stable_worldmodel.cli:app"
 [project.optional-dependencies]
 train = [
     "transformers>=4.50.0",
-    "stable-pretraining>=0.1.7",
-    "hydra-core",
+    "stable-pretraining>=0.1.8",
+    "datasets>=2.20.0",
     "hydra-submitit-launcher",
     "wandb",
 ]
@@ -50,7 +51,7 @@ env = [
     "minigrid",
     "gymnasium[all]",
     "gymnasium-robotics",
-    "opencv-python",
+    "opencv-python-headless",
     "stable_baselines3>=2.0.0",
     "craftax>=1.5.0",
     "ale-py",
@@ -59,7 +60,7 @@ env = [
 format = [
     "h5py",
     "hdf5plugin",
-    "decord",
+    "torchcodec",
     "imageio[ffmpeg]",
 ]
 
@@ -82,7 +83,7 @@ dev = [
   "mkdocs-shadcn",
   "pymdown-extensions",
   "pillow",
-  "decord",
+  "torchcodec",
   "imageio[ffmpeg]",
   "mkdocstrings[python]",
 ]

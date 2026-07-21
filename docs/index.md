@@ -63,7 +63,7 @@ Here is a quick start example: collect a dataset and perform an evaluation.
 import stable_worldmodel as swm
 from stable_worldmodel.data import HDF5Dataset
 from stable_worldmodel.policy import WorldModelPolicy, PlanConfig
-from stable_worldmodel.solver import CEMSolver
+from stable_worldmodel.planning import CEMSolver
 
 
 world = swm.World('swm/PushT-v1', num_envs=8, image_shape=(64, 64))
@@ -88,7 +88,7 @@ dataset = HDF5Dataset(
 )
 
 # model predictive control
-solver = CEMSolver(model=world_model, num_samples=300, device='cuda')
+solver = CEMSolver(cost=world_model, num_samples=300, device='cuda')
 policy = WorldModelPolicy(
     solver=solver,
     config=PlanConfig(horizon=10, receding_horizon=5)
@@ -113,6 +113,9 @@ After you have installed stable-worldmodel, try the [Quick Start Guide](quick_st
 | | |
 |---|---|
 | **[Environments](envs/pusht.md)** | Explore the included environments: PushT, TwoRoom, OGBench, DMControl, and more. |
+| **[Tutorial: collect data](tutorial/collect_data.md)** | Build a small dataset, inspect it, load it for training, and convert it to another format. |
+| **[Tutorial: train a world model](tutorial/training_wm.md)** | Train or plug in a model that implements the planning cost interface, then evaluate it with MPC. |
+| **[Tutorial: add an environment](tutorial/new_env.md)** | Register a Gymnasium environment with pixels, state, goals, and factors of variation. |
 | **[CLI Reference](cli.md)** | Inspect datasets, environments, and checkpoints from the terminal with the `swm` command. |
 | **[API Reference](api/world.md)** | Detailed documentation for World, Policy, Solver, Dataset, and other modules. |
 
