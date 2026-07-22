@@ -21,19 +21,20 @@ export MUJOCO_GL=egl
 echo "=== HEAD ==="
 git log --oneline -1
 
-echo "=== bootstrap uv into the venv ==="
-source .venv/bin/activate
-python -m pip install -q --upgrade "uv>=0.9.21,<0.10.0" || { echo "uv bootstrap FAILED"; exit 1; }
+export UV=${UV:-$HOME/.local/bin/uv}
+[ -x "$UV" ] || { echo "uv not found at $UV"; exit 1; }
+echo "uv: $("$UV" --version)"
 
-echo "=== uv sync (lockfile-driven) ==="
-uv sync
+echo "=== uv sync (lockfile-driven, into project .venv) ==="
+"$UV" sync
 SYNC_RC=$?
 echo "uv sync rc=$SYNC_RC"
 [ $SYNC_RC -ne 0 ] && { echo "SYNC FAILED — aborting before tests"; exit $SYNC_RC; }
 
+PY=.venv/bin/python
 echo "=== import smoke test ==="
-python -c "import stable_worldmodel as swm; from stable_worldmodel.planning import solver; from stable_worldmodel.planning.solver import diffusion_policy_solver; print('imports OK')" || { echo "IMPORT FAILED"; exit 1; }
+$PY -c "import stable_worldmodel as swm; from stable_worldmodel.planning import solver; from stable_worldmodel.planning.solver import diffusion_policy_solver; print('imports OK')" || { echo "IMPORT FAILED"; exit 1; }
 
 echo "=== pytest ==="
-python -m pytest -q 2>&1 | tail -60
+$PY -m pytest -q 2>&1 | tail -60
 echo "RESYNC-TEST-DONE rc=${PIPESTATUS[0]}"
