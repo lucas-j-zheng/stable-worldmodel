@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH -t 00:45:00
+#SBATCH -t 01:00:00
 #SBATCH -o logs/%x-%j.out
 #SBATCH -e logs/%x-%j.err
 
@@ -25,8 +25,11 @@ export UV=${UV:-$HOME/.local/bin/uv}
 [ -x "$UV" ] || { echo "uv not found at $UV"; exit 1; }
 echo "uv: $("$UV" --version)"
 
-echo "=== uv sync (lockfile-driven, into project .venv) ==="
-"$UV" sync
+echo "=== uv sync --all-extras (train,env,format + dev group) ==="
+# NOTE: bare `uv sync` prunes optional extras. The working .venv needs
+# train (spt/transformers/datasets), env (opencv/ale-py/mujoco/gym), and
+# format (h5py/torchcodec) to run training/eval and the full test suite.
+"$UV" sync --all-extras
 SYNC_RC=$?
 echo "uv sync rc=$SYNC_RC"
 [ $SYNC_RC -ne 0 ] && { echo "SYNC FAILED — aborting before tests"; exit $SYNC_RC; }
