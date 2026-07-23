@@ -27,7 +27,7 @@ run () {  # $1=dataset $2=encoder $3=tag
     echo "[align] $3 FAILED"
 }
 
-run pusht_cslip05.lance      lewm_pusht/weights.pt                     frozen_cslip05
-run pusht_expert_train.lance lewm_pusht/weights.pt                     frozen_base
-run pusht_cslip05.lance      e2c_diff_cslip05_ps1/weights_epoch_5.pt   e2c_ps1_cslip05
+run pusht_cslip05.lance   lewm_pusht/weights.pt                     frozen_cslip05
+run pusht_expert_train.h5 lewm_pusht/weights.pt                     frozen_base
+run pusht_cslip05.lance   e2c_diff_cslip05_ps1/weights_epoch_5.pt   e2c_ps1_cslip05
 echo "DONE-COST-ALIGN"

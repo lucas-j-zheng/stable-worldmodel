@@ -38,7 +38,9 @@ SCALES=(0.1 0.03)
 LR_SCALE=${SCALES[$SLURM_ARRAY_TASK_ID]}
 SNAME=$(echo "ls$LR_SCALE" | tr '.' 'p')   # 0.03 -> ls0p03
 
-SRC=${SRC:-latent_diffusion_pusht_x0}
+# dyn_x0_pusht_ps1 = the frozen-latent post-hoc x0 model (base-pusht 20-22).
+# (latent_diffusion_pusht_x0 was an empty stub; the real ckpts are dyn_*_pusht_*.)
+SRC=${SRC:-dyn_x0_pusht_ps1}
 EP=${EP:-2}
 ENC=lewm_pusht/weights.pt
 NAME="e2w_x0_base_${SNAME}"
@@ -52,7 +54,7 @@ echo "[e2w] ===== warm-start from $INIT, enc_lr_scale=$LR_SCALE, name=$NAME ====
 
 echo "[e2w] fine-tune $EP epochs from base-pusht PIXELS (encoder unfrozen, SIGReg 0.09) ..."
 python scripts/train/latent_diffusion.py \
-  data=pusht \
+  data=pusht data.dataset.name=pusht_expert_train.h5 \
   model.prediction_type=x0 model.num_inference_steps=20 \
   model.lewm_checkpoint=$ENC model.freeze_lewm=false \
   +init_dynamics_from="$INIT" \
@@ -66,7 +68,7 @@ echo "[e2w] re-cache latents with the fine-tuned encoder (epoch $EP) ..."
 LAT=pusht_base_${NAME}.lance
 python scripts/data/cache_latents.py \
   lewm_checkpoint=${NAME}/weights_epoch_$EP.pt +from_dynamics=true \
-  source=pusht_expert_train.lance out_name=$LAT device=cuda batch_size=256
+  source=pusht_expert_train.h5 out_name=$LAT device=cuda batch_size=256
 
 echo "[e2w] Q1 latstats (frozen ref ~0.97; ARC5 collapse 0.2) ..."
 python scripts/data/latent_marginal_stats.py --dataset $LAT --n-episodes 50 2>&1 | tail -2
