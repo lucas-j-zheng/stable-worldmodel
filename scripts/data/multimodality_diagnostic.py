@@ -535,11 +535,56 @@ def synthetic_control(rng, n=8000, cond_dim=4, tgt_dim=16, noise=0.15, sep=3.0):
     return cond, out
 
 
+def collapse_control(rng, n=8000, cond_dim=32, tgt_dim=192, noise=0.15,
+                     sep=3.0, target_std=0.2):
+    """D5 metric-validity control (diagnosis 2026-07-23): does the screen
+    false-positive in a COLLAPSED latent geometry?
+
+    The ARC-5 w=0 anchor (residual_bimodal 0.111) was measured in a collapsed
+    space (global_std ~0.2, strongly anisotropic). This control builds
+    latent-like unimodal/bimodal dynamics data, then applies an anisotropic
+    per-dim contraction (log-uniform scales, renormalized so global std hits
+    ``target_std``) to BOTH cond and target — mimicking what the diagnostic saw
+    on collapsed e2e latents (cond includes the collapsed latent, and per-dim
+    cond standardization re-inflates dead dims). Read:
+      unimodal contracted residual_bimodal >> 0   => w=0 anchor is ARTIFACT
+      unimodal ~0 AND bimodal stays HIGH          => anchor trustworthy
+    """
+    cond = rng.standard_normal((n, cond_dim)).astype(np.float32)
+    W = rng.standard_normal((cond_dim, tgt_dim)).astype(np.float32) / np.sqrt(cond_dim)
+    trend = cond @ W
+    dirn = rng.standard_normal(tgt_dim).astype(np.float32)
+    dirn /= np.linalg.norm(dirn)
+    base = trend + noise * rng.standard_normal((n, tgt_dim)).astype(np.float32)
+    b = rng.integers(0, 2, n) * 2 - 1
+    variants = {'unimodal': base,
+                'bimodal': base + sep * b[:, None] * dirn[None, :]}
+
+    # anisotropic contraction: per-dim scales spanning 3 orders of magnitude
+    scales = np.exp(rng.uniform(np.log(1e-3), 0.0, tgt_dim)).astype(np.float32)
+    out = {}
+    for name, tgt in variants.items():
+        out[name] = tgt                                   # healthy reference
+        t = tgt * scales[None, :]
+        t *= target_std / (np.sqrt(t.var(0).mean()) + 1e-12)
+        out[f'{name}_collapsed'] = t
+    # cond variants: healthy cond for healthy targets; contracted cond (first
+    # cond_dim scales) for collapsed targets — the diagnostic conditioned on
+    # the SAME collapsed latents it scored.
+    cond_scales = scales[:cond_dim]
+    cond_collapsed = cond * cond_scales[None, :]
+    return cond, cond_collapsed, out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dataset', default=None, help='latent .lance name under datasets/')
     ap.add_argument('--self-test', action='store_true',
                     help='run synthetic positive/negative controls (no dataset)')
+    ap.add_argument('--self-test-collapse', action='store_true',
+                    help='D5 control: metric behavior under anisotropic latent '
+                         'collapse (validates/kills the ARC-5 w=0 bimodality '
+                         'anchor). No dataset needed.')
     ap.add_argument('--tag', default='mm', help='label for the output')
     ap.add_argument('--mode',
                     choices=['dynamics', 'dynamics_k', 'policy', 'policy_chunk',
@@ -584,6 +629,21 @@ def main():
     args = ap.parse_args()
 
     rng = np.random.default_rng(args.seed)
+
+    if args.self_test_collapse:
+        cond, cond_collapsed, variants = collapse_control(rng)
+        print('[mm] COLLAPSE CONTROL (D5): expect unimodal AND '
+              'unimodal_collapsed residual_bimodal ~0 (else the ARC-5 w=0 '
+              'anchor 0.111 is an artifact of collapsed geometry); bimodal '
+              'variants should stay HIGH (power retained).')
+        for name, tgt in variants.items():
+            c = cond_collapsed if name.endswith('_collapsed') else cond
+            s = analyze(c, tgt, args.n_anchors, args.k, rng)
+            print(f'  {name:20s}: det_R2={s["det_r2_mean"]:.3f}  '
+                  f'residual_bimodal_frac={s["residual_bimodality_fraction"]:.3f}  '
+                  f'gmm2_frac={s["residual_gmm2_fraction"]:.3f}  '
+                  f'sep={s["gmm2_mode_separation_median"]:.2f}')
+        return
 
     if args.self_test:
         cond, variants = synthetic_control(rng)

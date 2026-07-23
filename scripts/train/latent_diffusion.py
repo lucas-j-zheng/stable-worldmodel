@@ -157,6 +157,27 @@ def run(cfg):
 
     model = hydra.utils.instantiate(cfg.model)
 
+    # E6.0a warm-start: initialize from a trained dynamics checkpoint (the
+    # frozen-latent post-hoc recipe) before e2e fine-tuning, so "joint training
+    # from scratch can't reach planability" is separated from "joint refinement
+    # of an already-plannable system destroys it". Loads the FULL state dict
+    # (denoiser + lewm encoder) with strict=False (the noise-schedule buffers
+    # are non-persistent and absent from checkpoints).
+    init_from = cfg.get('init_dynamics_from', None)
+    if init_from:
+        from stable_worldmodel.data import get_cache_dir
+        from stable_worldmodel.wm.utils import _resolve
+
+        ckpt_path, _ = _resolve(
+            init_from, get_cache_dir(None, sub_folder='checkpoints')
+        )
+        sd = torch.load(ckpt_path, map_location='cpu')
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        print(
+            f'[warmstart] dynamics init from {ckpt_path} '
+            f'(missing={len(missing)}, unexpected={len(unexpected)})'
+        )
+
     total_steps = cfg.trainer.max_epochs * len(train)
     optimizers = {
         'model_opt': {
