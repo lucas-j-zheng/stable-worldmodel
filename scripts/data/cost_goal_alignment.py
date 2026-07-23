@@ -30,12 +30,13 @@ import torch
 
 
 def img_transform(img_size=224):
+    # No ToImage: encode_episode hands over a (T, C, H, W) uint8 tensor
+    # directly (lance stores CHW; ToImage would mis-permute it as HWC).
     import stable_pretraining as spt
     from torchvision.transforms import v2 as transforms
 
     return transforms.Compose(
         [
-            transforms.ToImage(),
             transforms.ToDtype(torch.float32, scale=True),
             transforms.Normalize(**spt.data.dataset_stats.ImageNet),
             transforms.Resize(size=img_size),
@@ -54,9 +55,14 @@ def load_encoder(name, device):
 
 @torch.no_grad()
 def encode_episode(enc, pixels, transform, device, chunk=64):
-    """pixels: (T, H, W, C) uint8 -> (T, D) float32 latents."""
-    frames = [transform(p) for p in pixels]  # each (C, H, W)
-    x = torch.stack(frames).to(device)  # (T, C, H, W)
+    """pixels: (T,H,W,C) or (T,C,H,W) uint8 -> (T, D) float32 latents."""
+    arr = np.asarray(pixels)
+    x = torch.from_numpy(arr)
+    if x.ndim != 4:
+        raise ValueError(f'expected 4-D pixels, got {tuple(x.shape)}')
+    if x.shape[-1] in (1, 3):  # THWC -> TCHW
+        x = x.permute(0, 3, 1, 2).contiguous()
+    x = transform(x).to(device)  # (T, C, H, W) float, normalized, resized
     out = []
     for i in range(0, x.shape[0], chunk):
         z = enc.encode({'pixels': x[i : i + chunk].unsqueeze(0)})['emb']
