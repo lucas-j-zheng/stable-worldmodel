@@ -1,6 +1,7 @@
 defaults:
   - launcher: local
   - solver: diffusion_policy
+  - objective: goal_mse
   - _self_
 
 # Closed-loop eval of a trained DiffusionPolicy / MLPPolicy. Same env + plan

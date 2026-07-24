@@ -1,6 +1,7 @@
 defaults:
   - launcher: local
   - solver: cem
+  - objective: goal_mse
   - _self_
 
 # Closed-loop eval on the MULTIMODAL TwoRoom (2 symmetric doors). Same D-MPC

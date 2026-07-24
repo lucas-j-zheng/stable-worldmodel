@@ -1,6 +1,7 @@
 defaults:
   - launcher: local
   - solver: cem
+  - objective: goal_mse
   - _self_
 
 # Closed-loop D-MPC on the intrinsic-SLIP TwoRoom (P1 Route 1 verdict cell).
