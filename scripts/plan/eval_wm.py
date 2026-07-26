@@ -132,8 +132,15 @@ def run(cfg: DictConfig):
             )
             model.predictor = torch.compile(model.predictor)
         config = swm.PlanConfig(**cfg.plan_config)
-        objective = hydra.utils.instantiate(cfg.objective)
-        cost = swm.planning.ShootingCostEvaluator(model, objective)
+        # Models exposing the monolithic Costable surface (their own get_cost,
+        # e.g. LatentDiffusionDynamics with D-MPC K-sample cost averaging) are
+        # used directly, preserving pre-refactor semantics; others compose with
+        # the pluggable objective via ShootingCostEvaluator (upstream #282).
+        if hasattr(model, 'get_cost'):
+            cost = model
+        else:
+            objective = hydra.utils.instantiate(cfg.objective)
+            cost = swm.planning.ShootingCostEvaluator(model, objective)
         solver = hydra.utils.instantiate(cfg.solver, cost=cost)
         policy = swm.policy.WorldModelPolicy(
             solver=solver, config=config, process=process, transform=transform
