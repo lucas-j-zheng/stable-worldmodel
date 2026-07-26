@@ -44,17 +44,19 @@ run_eval () {  # $1=ckpt $2=label $3=steps $4=extra
 CSLIP="+world.contact_slip_scale=0.5 eval.dataset_name=pusht_cslip05.lance"
 
 # E6.1 pareto (base-pusht Q3; frozen refs v-diff 10 / x0 20-22 / MSE 30.7)
-for W in w0p0 w0p02 w0p045 w0p09; do
+for W in w0p0 w0p02 w0p045 w0p09 w0p18; do
   CK="e2s_diff_cslip05_${W}_ps1/weights_epoch_5.pt"
   run_eval "$CK" "pareto_${W}" 1
   run_eval "$CK" "pareto_${W}" 20
 done
 
 # E6.0a warmstart (frozen x0 baseline 20-22 @1; parity vs floor is the verdict)
-for EPN in 1 2; do
-  CK="e2w_x0_base_ls0p1/weights_epoch_${EPN}.pt"
-  run_eval "$CK" "warm_ls0p1_ep${EPN}" 1
-  run_eval "$CK" "warm_ls0p1_ep${EPN}" 20
+for LS in ls0p1 ls0p03; do
+  for EPN in 1 2; do
+    CK="e2w_x0_base_${LS}/weights_epoch_${EPN}.pt"
+    run_eval "$CK" "warm_${LS}_ep${EPN}" 1
+    run_eval "$CK" "warm_${LS}_ep${EPN}" 20
+  done
 done
 
 # 5c ps3 refill (matched + base)
