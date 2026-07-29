@@ -39,6 +39,8 @@ class LatentDiffusionDynamics(nn.Module):
         k_samples: int = 1,
         clip_sample: float | None = 6.0,
         prediction_type: str = 'eps',
+        cost_whiten: bool = False,
+        cost_stats_path: str | None = None,
     ):
         super().__init__()
 
@@ -103,6 +105,21 @@ class LatentDiffusionDynamics(nn.Module):
                 f"'{prediction_type}'."
             )
         self.prediction_type = prediction_type
+
+        # E6.5 — whitened planning cost. `criterion` measures plain L2 in latent
+        # space, which is the *right* metric only while the marginal is
+        # isotropic (frozen SIGReg: per-dim std ~1 everywhere). E2E fine-tuning
+        # breaks that: the warm-start encoders came back with per-dim std
+        # 0.20-1.76 (median ~0.6), so plain L2 now silently up-weights whichever
+        # dims happened to stay wide. When `cost_whiten` is on, the goal
+        # distance is standardized per-dim by the training-set latent std
+        # (loaded lazily from `cost_stats_path`, an npz written by
+        # scripts/data/latent_marginal_stats.py --dump-stats), restoring the
+        # isotropic geometry the planner was calibrated on. Inference-only: no
+        # retraining, and a no-op on an already-isotropic (frozen) latent space.
+        self.cost_whiten = bool(cost_whiten)
+        self.cost_stats_path = cost_stats_path
+        self._cost_scale = None
 
         # Fail fast at construction if the denoiser cannot fit the trained
         # trajectory layout, rather than truncating the sequence at runtime.
@@ -655,6 +672,35 @@ class LatentDiffusionDynamics(nn.Module):
         )
         return info
 
+    def _resolve_cost_scale(self, ref: torch.Tensor) -> torch.Tensor | None:
+        """Per-dim latent std used to whiten the goal distance (E6.5).
+
+        Loaded once from ``cost_stats_path`` and cached. Missing/unusable stats
+        are a hard error rather than a silent fallback to unwhitened L2 — a
+        whitening arm that quietly ran unwhitened would be indistinguishable
+        from its own control.
+        """
+        if not self.cost_whiten:
+            return None
+        if self._cost_scale is None:
+            if not self.cost_stats_path:
+                raise ValueError(
+                    'cost_whiten=True requires cost_stats_path (npz with a '
+                    "'std' array of per-dim latent stds)."
+                )
+            import numpy as np
+
+            stats = np.load(self.cost_stats_path)
+            scale = torch.as_tensor(stats['std'], dtype=torch.float32)
+            if scale.shape[-1] != ref.shape[-1]:
+                raise ValueError(
+                    f'cost stats dim {scale.shape[-1]} != latent dim '
+                    f'{ref.shape[-1]} (wrong stats file for this checkpoint?)'
+                )
+            # Floor guards against a dead dim (std -> 0) blowing the distance up.
+            self._cost_scale = scale.clamp_min(1e-2)
+        return self._cost_scale.to(device=ref.device, dtype=ref.dtype)
+
     def criterion(self, info: dict) -> torch.Tensor:
         pred_emb = info['predicted_emb']
         goal_emb = info['goal_emb']
@@ -666,9 +712,13 @@ class LatentDiffusionDynamics(nn.Module):
             .unsqueeze(1)
             .expand_as(pred_final)
         )
-        return torch.linalg.vector_norm(
-            pred_final - goal_final.detach(), ord=2, dim=-1
-        )
+        diff = pred_final - goal_final.detach()
+        # A constant mean offset cancels in the difference, so only the per-dim
+        # SCALE of the drifted marginal can distort ranking — whiten by it.
+        scale = self._resolve_cost_scale(diff)
+        if scale is not None:
+            diff = diff / scale
+        return torch.linalg.vector_norm(diff, ord=2, dim=-1)
 
     @torch.no_grad()
     def get_cost(

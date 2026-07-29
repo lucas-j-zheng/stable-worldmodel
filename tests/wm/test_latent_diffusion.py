@@ -188,6 +188,50 @@ def test_get_cost_returns_per_candidate_costs():
     assert torch.isfinite(cost).all()
 
 
+def test_cost_whitening_rescales_per_dim(tmp_path):
+    """E6.5: whitened cost = L2 after per-dim standardization.
+
+    Guards the two ways the arm could silently degrade into its own control:
+    unit stds must leave the cost unchanged, and non-unit stds must change it
+    exactly as a per-dim division does.
+    """
+    import numpy as np
+
+    model = make_model().eval()
+    pred = torch.randn(2, 3, HISTORY + HORIZON, LATENT_DIM)
+    goal = torch.randn(2, HISTORY, LATENT_DIM)
+    info = {"predicted_emb": pred, "goal_emb": goal}
+    plain = model.criterion(info)
+
+    unit = tmp_path / "unit.npz"
+    np.savez(unit, mean=np.zeros(LATENT_DIM), std=np.ones(LATENT_DIM))
+    model.cost_whiten = True
+    model.cost_stats_path = str(unit)
+    torch.testing.assert_close(model.criterion(info), plain)
+
+    scale = np.linspace(0.2, 2.0, LATENT_DIM)
+    aniso = tmp_path / "aniso.npz"
+    np.savez(aniso, mean=np.zeros(LATENT_DIM), std=scale)
+    model._cost_scale = None  # force reload of the new stats
+    model.cost_stats_path = str(aniso)
+    diff = pred[:, :, -1] - goal[:, -1].unsqueeze(1).expand_as(pred[:, :, -1])
+    expected = torch.linalg.vector_norm(
+        diff / torch.as_tensor(scale, dtype=diff.dtype), ord=2, dim=-1
+    )
+    torch.testing.assert_close(model.criterion(info), expected)
+
+
+def test_cost_whitening_without_stats_is_an_error():
+    model = make_model().eval()
+    model.cost_whiten = True
+    info = {
+        "predicted_emb": torch.randn(1, 2, HISTORY + HORIZON, LATENT_DIM),
+        "goal_emb": torch.randn(1, HISTORY, LATENT_DIM),
+    }
+    with pytest.raises(ValueError, match="cost_stats_path"):
+        model.criterion(info)
+
+
 def test_get_cost_rejects_horizon_mismatch():
     model = make_model().eval()
     b, s = 2, 3

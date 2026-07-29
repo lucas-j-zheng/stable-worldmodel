@@ -80,6 +80,23 @@ def latent_diffusion_forward(self, batch, stage, cfg):
             output['loss'] + cfg.sigreg_weight * output['sigreg_loss']
         )
 
+    # E6.5 moment control: SIGReg constrains the SHAPE of the latent marginal
+    # but not its LOCATION — both E6.0a warm-start arms drifted to mean_norm ~10
+    # (frozen ~0) while global_std stayed ~1, and that "std ~1" is itself over
+    # half cross-dim mean spread (true per-dim std ~0.6 vs frozen ~0.97). Add an
+    # explicit, low-variance moment penalty: ||batch mean||^2 (per-dim mean), and
+    # optionally per-dim std -> 1. No-op when the encoder is frozen (the emb is
+    # detached there, so the penalty would be gradless anyway).
+    moment_weight = float(cfg.get('moment_weight', 0.0) or 0.0)
+    if moment_weight > 0.0 and not self.model.freeze_lewm:
+        z = output['emb'].reshape(-1, output['emb'].shape[-1])
+        output['mean_loss'] = z.mean(0).pow(2).mean()
+        penalty = output['mean_loss']
+        if bool(cfg.get('moment_match_std', False)):
+            output['std_loss'] = (z.std(0) - 1.0).pow(2).mean()
+            penalty = penalty + output['std_loss']
+        output['loss'] = output['loss'] + moment_weight * penalty
+
     losses = {
         f'{stage}/{k}': v.detach() for k, v in output.items() if 'loss' in k
     }

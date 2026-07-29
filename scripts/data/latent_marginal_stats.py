@@ -27,6 +27,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dataset', required=True)
     ap.add_argument('--n-episodes', type=int, default=50)
+    ap.add_argument(
+        '--dump-stats',
+        default=None,
+        help='npz path for per-dim mean/std (feeds the whitened planning cost: '
+        'eval_wm +model_overrides={cost_whiten:true,cost_stats_path:...})',
+    )
     args = ap.parse_args()
 
     cache_dir = os.environ.get('LOCAL_DATASET_DIR', None)
@@ -37,10 +43,11 @@ def main():
     lat = np.concatenate(
         [np.asarray(ds.load_episode(i)['latent']) for i in range(n_ep)], axis=0
     )
+    per_dim_mean = lat.mean(axis=0)
     per_dim_std = lat.std(axis=0)
     print(
         f'[latstats] {args.dataset}: n={lat.shape[0]} frames, dim={lat.shape[1]} | '
-        f'mean_norm={np.linalg.norm(lat.mean(axis=0)):.3f} | '
+        f'mean_norm={np.linalg.norm(per_dim_mean):.3f} | '
         f'global_std={lat.std():.3f} | '
         f'per-dim std min/med/max='
         f'{per_dim_std.min():.3f}/{np.median(per_dim_std):.3f}/{per_dim_std.max():.3f} | '
@@ -48,6 +55,29 @@ def main():
         f'(frozen SIGReg ref: mean_norm~0, std~1, p99<~3; clip_sample=6)',
         flush=True,
     )
+
+    # E6.5: `global_std` above is taken over the FLATTENED array, so it mixes
+    # within-dim spread with the cross-dim spread of the per-dim means. On a
+    # drifted marginal (mean_norm ~10) most of it can be static offset — which
+    # would make an "anti-collapse PASS" read on global_std ~1 an artifact.
+    # Decompose it: total_var = within_var + mean_spread_var.
+    within_var = float((per_dim_std**2).mean())
+    mean_spread_var = float(((per_dim_mean - per_dim_mean.mean()) ** 2).mean())
+    total_var = within_var + mean_spread_var
+    print(
+        f'[latstats/decomp] {args.dataset}: '
+        f'within_std={np.sqrt(within_var):.3f} (the real anti-collapse number; '
+        f'frozen ~0.97) | mean_spread_std={np.sqrt(mean_spread_var):.3f} | '
+        f'mean_share_of_global_var={mean_spread_var / max(total_var, 1e-12):.1%} | '
+        f'|per-dim mean| med/max='
+        f'{np.median(np.abs(per_dim_mean)):.3f}/{np.abs(per_dim_mean).max():.3f} | '
+        f'std anisotropy max/min={per_dim_std.max() / max(per_dim_std.min(), 1e-6):.1f}x',
+        flush=True,
+    )
+
+    if args.dump_stats:
+        np.savez(args.dump_stats, mean=per_dim_mean, std=per_dim_std)
+        print(f'[latstats] wrote per-dim stats -> {args.dump_stats}', flush=True)
 
 
 if __name__ == '__main__':
