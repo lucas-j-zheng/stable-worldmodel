@@ -109,7 +109,7 @@ def main():
     rng = np.random.default_rng(args.seed)
     eps = rng.permutation(len(ds.lengths))[: args.n_episodes]
 
-    d_lat, d_agent, d_block = [], [], []
+    d_lat, d_agent, d_block, d_dims = [], [], [], []
     state_dim = None
     for ep in eps:
         data = ds.load_episode(int(ep))
@@ -132,6 +132,10 @@ def main():
             )
             db = db + dang * (np.median(db[db > 0]) if (db > 0).any() else 1.0)
         d_block.append(db)
+        # Label-independent view: |delta| of EVERY state dim, so the readout does
+        # not depend on --agent-dims/--block-dims being right for this dataset
+        # (pusht_expert_train.h5 reports state_dim=7, not the assumed 5).
+        d_dims.append(np.abs(st - sg))
 
     d_lat = np.concatenate(d_lat)
     d_agent = np.concatenate(d_agent)
@@ -172,6 +176,23 @@ def main():
         result['WARNING'] = (
             f'state_dim={state_dim} != 5; check --agent-dims/--block-dims'
         )
+    # Per-state-dim breakdown (E6.6): the aggregate agent/block split relies on
+    # index assumptions this dataset violates. Report every dim separately --
+    # univariate Spearman plus a standardized OLS over all dims jointly -- so
+    # "the cost stopped tracking dim j" is readable without any labeling.
+    dims = np.concatenate(d_dims)
+    Xd = (dims - dims.mean(0)) / (dims.std(0) + 1e-12)
+    Xd = np.concatenate([Xd, np.ones((Xd.shape[0], 1))], axis=1)
+    coef_d, *_ = np.linalg.lstsq(Xd, y, rcond=None)
+    r2_d = 1.0 - ((y - Xd @ coef_d) ** 2).mean()
+    result['per_dim_spearman'] = [
+        round(spearman(d_lat, dims[:, j]), 4) for j in range(dims.shape[1])
+    ]
+    result['per_dim_coef_std'] = [
+        round(float(c), 4) for c in coef_d[:-1]
+    ]
+    result['per_dim_ols_r2'] = round(float(r2_d), 4)
+
     print('[align] RESULT', json.dumps(result, indent=2))
     print(
         f"[align] >>> {args.tag}: coef agent={result['coef_agent_std']} "

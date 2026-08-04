@@ -75,10 +75,15 @@ def encode_train_path(enc, frames_hwc, transform, device, chunk=32):
     """frames: (T,H,W,C) uint8 -> (T,D). Mirrors the training dataset pipeline."""
     out = []
     for i in range(0, len(frames_hwc), chunk):
-        block = frames_hwc[i : i + chunk]
+        block = np.asarray(frames_hwc[i : i + chunk])
+        # spt's ToImage does NOT permute a trailing-channel layout, so THWC
+        # reaches Normalize as (T, 224, 224, 3) and it subtracts the 3-vector
+        # against dim 1 (same class of bug as b01211a in the alignment probe).
+        # The training loader supplies TCHW; match it.
+        block = block.transpose(0, 3, 1, 2)
         # The training loader hands the encoder a (B, T, C, H, W) stack; here one
         # "episode chunk" plays the role of the time axis.
-        batch = {'pixels': torch.from_numpy(np.asarray(block))}
+        batch = {'pixels': torch.from_numpy(np.ascontiguousarray(block))}
         px = transform(batch)['pixels'].to(device)
         if px.ndim == 4:
             px = px.unsqueeze(0)
