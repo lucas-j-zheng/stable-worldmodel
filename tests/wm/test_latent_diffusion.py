@@ -188,6 +188,79 @@ def test_get_cost_returns_per_candidate_costs():
     assert torch.isfinite(cost).all()
 
 
+class StubLeWMBatchNorm(StubLeWM):
+    """Stub whose encode path carries a BatchNorm, like the real projector."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.projector = nn.BatchNorm1d(self.latent_dim)
+
+    def encode(self, info):
+        px = info["pixels"].float()
+        b, t = px.shape[0], px.shape[1]
+        feat = self.enc(px.reshape(b * t, -1))
+        return {"emb": self.projector(feat).reshape(b, t, -1)}
+
+
+def _encode(model, x):
+    return model.encode_latents({"pixels": x})
+
+
+def test_trainable_encoder_norm_stays_in_inference_mode():
+    """E6.7: a trainable encoder must not switch its BN to batch statistics.
+
+    Asserts the OBSERVABLE consequence -- latents identical in train and eval
+    mode -- rather than the flag, so the test still fails if the mechanism is
+    reintroduced somewhere other than `train()`.
+    """
+    model = LatentDiffusionDynamics(
+        denoiser=make_denoiser(),
+        lewm=StubLeWMBatchNorm(),
+        freeze_lewm=False,
+        history_size=HISTORY,
+        horizon=HORIZON,
+        num_diffusion_steps=20,
+    )
+    # Move the running stats away from the batch stats, so batch-vs-running
+    # normalization is distinguishable at all.
+    model.lewm.projector.running_mean.fill_(3.0)
+    model.lewm.projector.running_var.fill_(2.0)
+    x = torch.randn(4, HISTORY, LATENT_DIM)
+
+    model.train()
+    train_mode = _encode(model, x)
+    model.eval()
+    eval_mode = _encode(model, x)
+
+    torch.testing.assert_close(train_mode, eval_mode)
+    assert next(model.lewm.parameters()).requires_grad, (
+        'pinning normalization must not freeze the encoder weights'
+    )
+
+
+def test_pre_e6p7_behavior_is_reproducible():
+    """The opt-out must actually restore the old (mismatched) behavior."""
+    model = LatentDiffusionDynamics(
+        denoiser=make_denoiser(),
+        lewm=StubLeWMBatchNorm(),
+        freeze_lewm=False,
+        frozen_encoder_norm=False,
+        history_size=HISTORY,
+        horizon=HORIZON,
+        num_diffusion_steps=20,
+    )
+    model.lewm.projector.running_mean.fill_(3.0)
+    model.lewm.projector.running_var.fill_(2.0)
+    x = torch.randn(4, HISTORY, LATENT_DIM)
+
+    model.train()
+    train_mode = _encode(model, x)
+    model.eval()
+    eval_mode = _encode(model, x)
+
+    assert not torch.allclose(train_mode, eval_mode)
+
+
 def test_cost_whitening_rescales_per_dim(tmp_path):
     """E6.5: whitened cost = L2 after per-dim standardization.
 

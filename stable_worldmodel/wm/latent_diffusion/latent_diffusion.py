@@ -41,6 +41,7 @@ class LatentDiffusionDynamics(nn.Module):
         prediction_type: str = 'eps',
         cost_whiten: bool = False,
         cost_stats_path: str | None = None,
+        frozen_encoder_norm: bool = True,
     ):
         super().__init__()
 
@@ -72,6 +73,11 @@ class LatentDiffusionDynamics(nn.Module):
         # the encoder learns only through the history/conditioning branch
         # (JEPA-style). No effect when the encoder is frozen.
         self.stopgrad_target = bool(stopgrad_target)
+        # E6.7: hold the trainable encoder's BatchNorm in inference mode so the
+        # latents the denoiser trains on match the ones it plans on. Default ON
+        # (the mismatch is a bug, not a design choice); set false to reproduce
+        # the pre-E6.7 e2e behavior of ARC 5/6.
+        self.frozen_encoder_norm = bool(frozen_encoder_norm)
         self.history_size = (
             int(history_size) if history_size is not None else None
         )
@@ -162,7 +168,32 @@ class LatentDiffusionDynamics(nn.Module):
         super().train(mode)
         if self.freeze_lewm:
             self.lewm.eval()
+        elif self.frozen_encoder_norm:
+            self._set_encoder_norm_eval()
         return self
+
+    def _set_encoder_norm_eval(self) -> None:
+        """Keep the encoder's normalization layers in inference mode (E6.7).
+
+        ``lewm.encode`` runs the CLS token through ``self.projector``, whose
+        MLP carries a ``BatchNorm1d``. In train mode BN centers each batch by
+        construction; at planning time it uses running statistics. With a
+        FROZEN encoder that asymmetry is invisible -- ``train()`` forces
+        ``lewm.eval()`` above, so training and planning see the same latents.
+        With a TRAINABLE encoder it was not: measured on the same 1090 frames,
+        train mode gives mean_norm 0.14 / within_std 0.66 while eval mode gives
+        3.55 / 1.02. The denoiser was therefore fit on batch-centered latents
+        and asked to plan on running-stat latents -- a train/inference mismatch
+        that existed ONLY on the e2e path, and a candidate cause of every e2e
+        planning floor in ARC 5/5b/5c and ARC 6.
+
+        Pinning only the norm layers (rather than ``lewm.eval()`` wholesale)
+        keeps dropout and any other train-mode behavior intact, so this isolates
+        the normalization statistics as the single changed variable.
+        """
+        for module in self.lewm.modules():
+            if isinstance(module, nn.modules.batchnorm._BatchNorm):
+                module.eval()
 
     @property
     def latent_dim(self) -> int:
